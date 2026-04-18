@@ -85,8 +85,22 @@ Return ONLY this JSON object — no words outside it:
   "proof": "<one sentence explaining why, using simple words>",
   "kid_summary": "<one fun, encouraging sentence ≤20 words that a 10-year-old would love to read>",
   "bottlenecks": [{ "x": <col>, "y": <row>, "reason": "<fun kid-friendly reason why they get stuck here>" }],
-  "solutionPath": [{ "col": <col>, "row": <row> }] or null
-}`;
+  "solutionPath": [{ "col": <col>, "row": <row> }] or null,
+  "design_suggestions": [
+    {
+      "x": <col of the tile this tip is about>,
+      "y": <row of the tile this tip is about>,
+      "problem": "<short bold label, e.g. 'Gap Too Wide' or 'Floating Platform'>",
+      "suggestion": "<one friendly sentence a 10-year-old can act on, e.g. 'Try adding a stepping stone here!'>"
+    }
+  ],
+  "suggestedSpawn": { "col": <col>, "row": <row> } or null,
+  "suggestedGoal":  { "col": <col>, "row": <row> } or null
+}
+Notes for design_suggestions:
+- Include 1–4 tips pointing out spots that could be improved (dangerous gaps, lonely floating platforms, dead ends, a missing start or finish).
+- If the START or FINISH is missing from the level, set suggestedSpawn / suggestedGoal to a good empty cell where the kid should draw it.
+- If both are present, set suggestedSpawn and suggestedGoal to null.`;
 }
 
 // ---------------------------------------------------------------------------

@@ -96,6 +96,68 @@
     }
     #imageInput { display: none; }
 
+    /* TAKE PHOTO hover button inside upload zone */
+    #take-photo-btn {
+      display: none;
+      position: absolute;
+      inset: 0;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 5px;
+      background: rgba(10,10,20,0.82);
+      color: #7aa2f7;
+      font-family: 'Courier New', monospace;
+      font-size: 11px;
+      font-weight: bold;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      border: none;
+      cursor: pointer;
+      z-index: 3;
+      border-radius: 6px;
+    }
+    #take-photo-btn .cam-icon { font-size: 22px; }
+    #upload-zone:hover #take-photo-btn { display: flex; }
+
+    /* Webcam viewfinder — sits on top of the game canvas */
+    #webcam-view {
+      display: none;
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      border-radius: 4px;
+      z-index: 8;
+    }
+    #webcam-view.active { display: block; }
+
+    /* SNAP button overlaying the viewfinder */
+    #snap-btn {
+      display: none;
+      position: absolute;
+      bottom: 22px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 9;
+      padding: 11px 32px;
+      background: rgba(122,162,247,0.92);
+      color: #0e0e14;
+      font-family: 'Courier New', monospace;
+      font-size: 14px;
+      font-weight: bold;
+      letter-spacing: 0.14em;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      text-transform: uppercase;
+      transition: background 0.15s, transform 0.1s;
+    }
+    #snap-btn:hover  { background: #9ab8ff; }
+    #snap-btn:active { transform: translateX(-50%) scale(0.97); }
+    #snap-btn.active { display: block; }
+
     /* ── Sliders ── */
     .sliders-wrap {
       display: flex;
@@ -220,7 +282,7 @@
 
     #hud {
       font-size: 10px;
-      color: #3a3a5a;
+      color: #6b7280;
       letter-spacing: 0.05em;
       flex-shrink: 0;
     }
@@ -363,6 +425,41 @@
     @keyframes cur-blink { 50% { opacity: 0; } }
     #idle-hint { color: #2a2a3a; font-style: italic; }
 
+    /* Design tips toggle button */
+    #tipsBtn {
+      padding: 9px 13px;
+      background: #0c1f0c;
+      color: #4ade80;
+      font-family: 'Courier New', monospace;
+      font-size: 12px;
+      font-weight: bold;
+      letter-spacing: 0.1em;
+      border: 1px solid #166534;
+      border-radius: 8px;
+      cursor: pointer;
+      text-transform: uppercase;
+      transition: background 0.15s;
+      flex-shrink: 0;
+    }
+    #tipsBtn:hover { background: #14532d; }
+    #tipsBtn.off { background: #131313; color: #3a3a3a; border-color: #2a2a2a; }
+
+    /* Design tip tooltip */
+    #design-tooltip {
+      position: fixed;
+      display: none;
+      z-index: 200;
+      background: #10102a;
+      border: 1px solid #7aa2f7;
+      border-radius: 10px;
+      padding: 10px 14px;
+      max-width: 230px;
+      pointer-events: none;
+      box-shadow: 0 0 18px rgba(122,162,247,0.35), 0 4px 24px rgba(0,0,0,0.6);
+    }
+    .tip-problem    { font-size: 11px; font-weight: bold; color: #e2e8f0; margin-bottom: 5px; }
+    .tip-suggestion { font-size: 10px; color: #9ca3af; line-height: 1.55; }
+
     /* EVALUATE button */
     #evaluateBtn {
       padding: 13px;
@@ -385,6 +482,11 @@
   </style>
 </head>
 <body>
+<div id="design-tooltip">
+  <div class="tip-problem" id="tip-problem"></div>
+  <div class="tip-suggestion" id="tip-suggestion"></div>
+</div>
+
 <div id="app">
 
   <!-- ══ LEFT SIDEBAR ══ -->
@@ -398,6 +500,7 @@
       </div>
       <img id="zone-preview" alt="preview">
       <span id="zone-preview-label"></span>
+      <button id="take-photo-btn"><span class="cam-icon">📸</span>TAKE PHOTO</button>
     </div>
     <input type="file" id="imageInput" accept="image/*">
 
@@ -446,6 +549,9 @@
   <div id="center-col">
     <div id="canvas-wrapper">
       <canvas id="gameCanvas" width="960" height="700"></canvas>
+      <video id="webcam-view" autoplay playsinline muted></video>
+      <button id="snap-btn">📷 SNAP</button>
+      <canvas id="capture-canvas" style="display:none" width="960" height="700"></canvas>
       <div id="loading-overlay">
         <div class="spinner"></div>
         <div class="loading-label">Analyzing image…</div>
@@ -491,6 +597,7 @@
       <span id="idle-hint">Press Check It! to see how I figure it out…</span>
     </div>
 
+    <button id="tipsBtn" disabled>💡 SHOW DESIGN TIPS</button>
     <button id="evaluateBtn" disabled>🔍 CHECK IT!</button>
   </div>
 
@@ -709,10 +816,14 @@
   let offsetX           = 0;
   let offsetY           = 0;
   let currentGrid       = null;
-  let activeBottlenecks = [];
-  let activeSolutionPath = [];
-  let isLoading         = false;
-  let pendingFile       = null;
+  let activeBottlenecks      = [];
+  let activeSolutionPath     = [];
+  let activeDesignSuggestions = [];
+  let activeSuggestedSpawn   = null;
+  let activeSuggestedGoal    = null;
+  let showDesignTips         = false;
+  let isLoading              = false;
+  let pendingFile            = null;
 
   function setLoading(on) {
     isLoading = on;
@@ -734,8 +845,11 @@
     const ts = Math.floor(Math.min((W - 16) / cols, (H - 16) / rows));
 
     currentGrid = jsonGrid;
-    activeBottlenecks  = [];
-    activeSolutionPath = [];
+    activeBottlenecks       = [];
+    activeSolutionPath      = [];
+    activeDesignSuggestions = [];
+    activeSuggestedSpawn    = null;
+    activeSuggestedGoal     = null;
     level   = new Level(jsonGrid, ts);
     state   = 'playing';
     offsetX = Math.floor((W - level.width)  / 2);
@@ -747,8 +861,125 @@
 
     spawnPlayer();
     document.getElementById('evaluateBtn').disabled = false;
+    const _tb = document.getElementById('tipsBtn');
+    _tb.disabled    = true;
+    _tb.textContent = '💡 SHOW DESIGN TIPS';
+    _tb.classList.add('off');
+    showDesignTips  = false;
     resetSidebar();
   }
+
+  // ================================================================
+  // EDUCATION LAYER
+  // ================================================================
+  function drawDesignSuggestions(suggestionsArray) {
+    if (!showDesignTips || !level) return;
+    const ts = level.tileSize;
+
+    // Ghost spawn outline
+    if (activeSuggestedSpawn) {
+      const gx = offsetX + activeSuggestedSpawn.col * ts;
+      const gy = offsetY + activeSuggestedSpawn.row * ts;
+      ctx.save();
+      ctx.setLineDash([4, 4]);
+      ctx.strokeStyle = 'rgba(74,222,128,0.7)';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(gx + ts * 0.125, gy + ts * 0.05, ts * 0.75, ts * 0.9);
+      ctx.fillStyle = 'rgba(74,222,128,0.12)';
+      ctx.fillRect(gx + ts * 0.125, gy + ts * 0.05, ts * 0.75, ts * 0.9);
+      ctx.setLineDash([]);
+      ctx.fillStyle = 'rgba(74,222,128,0.5)';
+      ctx.font = `${Math.round(ts * 0.45)}px monospace`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('P?', gx + ts / 2, gy + ts / 2);
+      ctx.restore();
+    }
+
+    // Ghost goal outline
+    if (activeSuggestedGoal) {
+      const gx = offsetX + activeSuggestedGoal.col * ts;
+      const gy = offsetY + activeSuggestedGoal.row * ts;
+      ctx.save();
+      ctx.setLineDash([4, 4]);
+      ctx.strokeStyle = 'rgba(251,191,36,0.7)';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(gx + 1, gy + 1, ts - 2, ts - 2);
+      ctx.fillStyle = 'rgba(251,191,36,0.1)';
+      ctx.fillRect(gx + 1, gy + 1, ts - 2, ts - 2);
+      ctx.setLineDash([]);
+      ctx.fillStyle = 'rgba(251,191,36,0.5)';
+      ctx.font = `${Math.round(ts * 0.7)}px monospace`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('★', gx + ts / 2, gy + ts / 2);
+      ctx.restore();
+    }
+
+    // '?' markers
+    for (const s of suggestionsArray) {
+      const cx = offsetX + s.x * ts + ts / 2;
+      const cy = offsetY + s.y * ts + ts / 2;
+      ctx.save();
+      ctx.shadowColor = '#7aa2f7';
+      ctx.shadowBlur  = 14;
+      ctx.fillStyle   = 'rgba(122,162,247,0.9)';
+      ctx.beginPath();
+      ctx.arc(cx, cy, Math.max(8, ts * 0.32), 0, Math.PI * 2);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+      ctx.fillStyle  = '#0e0e14';
+      ctx.font       = `bold ${Math.max(9, Math.round(ts * 0.38))}px monospace`;
+      ctx.textAlign  = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('?', cx, cy);
+      ctx.restore();
+    }
+  }
+
+  // Tooltip hover on canvas
+  const _tooltip = document.getElementById('design-tooltip');
+  canvas.addEventListener('mousemove', e => {
+    if (!showDesignTips || !level || activeDesignSuggestions.length === 0) {
+      _tooltip.style.display = 'none';
+      return;
+    }
+    const rect   = canvas.getBoundingClientRect();
+    const scaleX = canvas.width  / rect.width;
+    const scaleY = canvas.height / rect.height;
+    const mx = (e.clientX - rect.left) * scaleX;
+    const my = (e.clientY - rect.top)  * scaleY;
+    const ts = level.tileSize;
+    const r  = Math.max(8, ts * 0.32);
+
+    for (const s of activeDesignSuggestions) {
+      const cx = offsetX + s.x * ts + ts / 2;
+      const cy = offsetY + s.y * ts + ts / 2;
+      if (Math.hypot(mx - cx, my - cy) <= r + 4) {
+        document.getElementById('tip-problem').textContent    = s.problem;
+        document.getElementById('tip-suggestion').textContent = s.suggestion;
+        _tooltip.style.display = 'block';
+        const tw = _tooltip.offsetWidth, th = _tooltip.offsetHeight;
+        let left = e.clientX + 16, top = e.clientY - 12;
+        if (left + tw > window.innerWidth  - 8) left = e.clientX - tw - 16;
+        if (top  + th > window.innerHeight - 8) top  = window.innerHeight - th - 8;
+        _tooltip.style.left = left + 'px';
+        _tooltip.style.top  = top  + 'px';
+        return;
+      }
+    }
+    _tooltip.style.display = 'none';
+  });
+  canvas.addEventListener('mouseleave', () => { _tooltip.style.display = 'none'; });
+
+  // Toggle button
+  document.getElementById('tipsBtn').addEventListener('click', () => {
+    showDesignTips = !showDesignTips;
+    const btn = document.getElementById('tipsBtn');
+    btn.textContent = showDesignTips ? '💡 HIDE DESIGN TIPS' : '💡 SHOW DESIGN TIPS';
+    btn.classList.toggle('off', !showDesignTips);
+    if (!showDesignTips) _tooltip.style.display = 'none';
+  });
 
   // ================================================================
   // UPDATE / DRAW
@@ -812,6 +1043,7 @@
 
     level.draw(ctx, -offsetX, -offsetY, activeBottlenecks, activeSolutionPath);
     if (player) player.draw(ctx, -offsetX, -offsetY);
+    drawDesignSuggestions(activeDesignSuggestions);
 
     if (state === 'dead') {
       ctx.fillStyle = 'rgba(160,0,0,0.45)';
@@ -870,7 +1102,10 @@
   const uploadZone = document.getElementById('upload-zone');
   const imageInput = document.getElementById('imageInput');
 
-  uploadZone.addEventListener('click', () => imageInput.click());
+  uploadZone.addEventListener('click', e => {
+    if (e.target.closest('#take-photo-btn')) return; // handled below
+    imageInput.click();
+  });
 
   uploadZone.addEventListener('dragover', e => { e.preventDefault(); uploadZone.classList.add('drag-over'); });
   uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('drag-over'));
@@ -902,6 +1137,103 @@
     label.textContent    = file.name;
     label.style.display  = 'block';
     def.style.display    = 'none';
+  }
+
+  // ================================================================
+  // WEBCAM CAPTURE
+  // ================================================================
+  let webcamStream = null;
+  const webcamVideo = document.getElementById('webcam-view');
+  const snapBtn     = document.getElementById('snap-btn');
+  const captureCanvas = document.getElementById('capture-canvas');
+
+  document.getElementById('take-photo-btn').addEventListener('click', e => {
+    e.stopPropagation();
+    startWebcam();
+  });
+
+  snapBtn.addEventListener('click', snapPhoto);
+
+  async function startWebcam() {
+    try {
+      webcamStream = await navigator.mediaDevices.getUserMedia({
+        video: { aspectRatio: 960 / 700, width: { ideal: 1920 } },
+        audio: false,
+      });
+      webcamVideo.srcObject = webcamStream;
+      webcamVideo.classList.add('active');
+      snapBtn.classList.add('active');
+    } catch (err) {
+      alert('Could not access camera: ' + err.message);
+    }
+  }
+
+  function stopWebcam() {
+    if (webcamStream) {
+      webcamStream.getTracks().forEach(t => t.stop());
+      webcamStream = null;
+    }
+    webcamVideo.srcObject = null;
+    webcamVideo.classList.remove('active');
+    snapBtn.classList.remove('active');
+  }
+
+  function snapPhoto() {
+    const vw = webcamVideo.videoWidth;
+    const vh = webcamVideo.videoHeight;
+    if (!vw || !vh) return;
+
+    const targetRatio = 960 / 700;
+    const videoRatio  = vw / vh;
+    let sx, sy, sw, sh;
+    if (videoRatio > targetRatio) {
+      sh = vh; sw = vh * targetRatio; sx = (vw - sw) / 2; sy = 0;
+    } else {
+      sw = vw; sh = vw / targetRatio; sx = 0; sy = (vh - sh) / 2;
+    }
+
+    const capCtx = captureCanvas.getContext('2d');
+    capCtx.drawImage(webcamVideo, sx, sy, sw, sh, 0, 0, 960, 700);
+
+    captureCanvas.toBlob(async blob => {
+      if (!blob) return;
+      stopWebcam();
+
+      // Show snapshot preview in upload zone
+      if (previewObjectUrl) URL.revokeObjectURL(previewObjectUrl);
+      previewObjectUrl = URL.createObjectURL(blob);
+      const preview = document.getElementById('zone-preview');
+      const label   = document.getElementById('zone-preview-label');
+      const def     = document.getElementById('zone-default');
+      preview.src           = previewObjectUrl;
+      preview.style.display = 'block';
+      label.textContent     = 'Webcam snapshot';
+      label.style.display   = 'block';
+      def.style.display     = 'none';
+
+      // Sync physics and upload
+      GRAVITY       = parseFloat(document.getElementById('sl-gravity').value);
+      JUMP_STRENGTH = parseFloat(document.getElementById('sl-jump').value);
+      MOVE_SPEED    = parseFloat(document.getElementById('sl-speed').value);
+      FRICTION      = parseFloat(document.getElementById('sl-friction').value);
+      MAX_FALL      = parseFloat(document.getElementById('sl-maxfall').value);
+
+      setLoading(true);
+      const form = new FormData();
+      form.append('image', blob, 'webcam-snap.jpg');
+      try {
+        const res  = await fetch('/upload', { method: 'POST', body: form });
+        const json = await res.json();
+        if (!res.ok) throw new Error(json.error || 'Upload failed');
+        loadGeneratedLevel(json.data);
+        pendingFile = null;
+      } catch (err) {
+        alert('✗ ' + err.message);
+        console.error(err);
+      } finally {
+        setLoading(false);
+      }
+    }, 'image/jpeg', 0.92);
   }
 
   // ================================================================
@@ -990,8 +1322,13 @@
     document.getElementById('trace-answer').textContent = '';
     document.getElementById('trace-cursor').style.display = 'none';
     document.getElementById('idle-hint').style.display   = '';
-    activeBottlenecks  = [];
-    activeSolutionPath = [];
+    activeBottlenecks       = [];
+    activeSolutionPath      = [];
+    activeDesignSuggestions = [];
+    activeSuggestedSpawn    = null;
+    activeSuggestedGoal     = null;
+    showDesignTips          = false;
+    _tooltip.style.display  = 'none';
     _traceThink  = '';
     _traceAnswer = '';
   }
@@ -1074,6 +1411,18 @@
 
     activeSolutionPath = (result.solvable && Array.isArray(result.solutionPath))
       ? result.solutionPath : [];
+
+    activeDesignSuggestions = Array.isArray(result.design_suggestions) ? result.design_suggestions : [];
+    activeSuggestedSpawn    = result.suggestedSpawn || null;
+    activeSuggestedGoal     = result.suggestedGoal  || null;
+
+    const tipsBtn = document.getElementById('tipsBtn');
+    tipsBtn.disabled = false;
+    if (!showDesignTips) {
+      showDesignTips = true;
+      tipsBtn.textContent = '💡 HIDE DESIGN TIPS';
+      tipsBtn.classList.remove('off');
+    }
   }
 
   document.getElementById('evaluateBtn').addEventListener('click', async () => {
