@@ -44,40 +44,104 @@ function buildPrompt(grid, physicsParams) {
     }
   }
 
-  const platformList = platforms
-    .map(p => `  P${p.id}: row ${p.row}, cols ${p.minCol}–${p.maxCol}`)
-    .join('\n');
-
   const spikeList = spikes.length
     ? spikes.map(s => `(col ${s.col}, row ${s.row})`).join(', ')
     : 'none';
 
-  const diagSpeed = (moveSpeed / Math.SQRT2).toFixed(2);
+  // --- Physics constants ---
+  const hAirSpeed      = moveSpeed / Math.SQRT2;
+  const totalAirTime   = 2 * jumpStrength / gravity;
+  const maxJumpHeightPx    = jumpStrength * jumpStrength / (2 * gravity);
+  const maxJumpHeightTiles = maxJumpHeightPx / tileSize;
+  const maxHorizReachTiles = hAirSpeed * totalAirTime / tileSize;
 
-  return `You are checking whether a player character can make it from the START to the FINISH in a 2-D jump-and-run game. Use simple, fun words a 10-year-old would understand.
+  // --- Pre-compute pairwise reachability ---
+  // Can the player jump FROM platform A and LAND ON platform B?
+  // "Up" in screen space = lower row number. Rise = (fromRow - toRow) tiles.
+  function canJump(from, to) {
+    const riseTiles = from.row - to.row; // positive = jumping up, negative = jumping down
+    const colOptions = [];
+    // Try every edge-to-edge horizontal distance
+    for (const fc of [from.minCol, from.maxCol]) {
+      for (const tc of [to.minCol, to.maxCol]) {
+        colOptions.push(Math.abs(tc - fc));
+      }
+    }
+    const minHorizTiles = Math.min(...colOptions);
 
-HOW THE CHARACTER MOVES:
-  - Gravity pulls the character DOWN at ${gravity} px every second squared.
-  - When the character jumps, they shoot UP at ${jumpStrength} px/s.
-  - When running left or right on flat ground, they move at ${moveSpeed} px/s.
-  - IMPORTANT — diagonal movement rule: when the character moves sideways AND up/down at the same time (like jumping across a gap), the total speed must stay the same size. So the sideways speed becomes ${diagSpeed} px/s (= ${moveSpeed} / √2) and the up/down speed becomes ${diagSpeed} px/s (= ${jumpStrength} / √2). Think of it like a pizza slice — if you keep the whole slice the same size but tilt it, each side gets shorter.
-  - Each tile is ${tileSize} pixels wide and tall.
-  - Jump path formula: sideways distance x(t) = ${diagSpeed} × t, up/down position y(t) = −${diagSpeed} × t + 0.5 × ${gravity} × t²  (positive y = going down).
+    if (riseTiles < 0) {
+      // Jumping DOWN: always reachable horizontally if platforms overlap or are within reach
+      return minHorizTiles <= maxHorizReachTiles;
+    }
+    // Jumping UP: need enough height AND horizontal reach
+    if (riseTiles > maxJumpHeightTiles) return false;
+    // Time to reach that height (ascending phase): riseTiles*tileSize = jumpStrength*t - 0.5*gravity*t²
+    // Approximate: if height is reachable, check horizontal reach at that time
+    const risePx = riseTiles * tileSize;
+    // discriminant of quadratic for t: 0.5g t² - v0 t + h = 0
+    const disc = jumpStrength * jumpStrength - 2 * gravity * risePx;
+    if (disc < 0) return false;
+    const tAscend = (jumpStrength - Math.sqrt(disc)) / gravity; // time to reach that height (ascending)
+    const horizAtThat = hAirSpeed * tAscend;
+    return minHorizTiles * tileSize <= horizAtThat + (from.maxCol - from.minCol) * tileSize;
+  }
 
-THE LEVEL (column 0 = left side, row 0 = top):
+  const reachabilityLines = [];
+  for (let i = 0; i < platforms.length; i++) {
+    for (let j = 0; j < platforms.length; j++) {
+      if (i === j) continue;
+      const ok = canJump(platforms[i], platforms[j]);
+      const riseTiles = platforms[i].row - platforms[j].row;
+      const dir = riseTiles > 0 ? `UP ${riseTiles} tiles` : riseTiles < 0 ? `DOWN ${-riseTiles} tiles` : 'SAME HEIGHT';
+      reachabilityLines.push(`  P${i} → P${j}: ${ok ? 'REACHABLE' : 'TOO FAR'} (${dir})`);
+    }
+  }
+
+  // Find which platform each special position belongs to
+  function findPlatform(pos) {
+    return platforms.find(p => p.row === pos.row && p.minCol <= pos.col && pos.col <= p.maxCol)
+      ?? platforms.reduce((best, p) => {
+        const d = Math.abs(p.row - pos.row);
+        return d < Math.abs(best.row - pos.row) ? p : best;
+      }, platforms[0]);
+  }
+  const startPlat = platforms.length ? findPlatform({ row: playerPos.row, col: playerPos.col }) : null;
+  const goalPlat  = platforms.length ? findPlatform({ row: goalPos.row,   col: goalPos.col   }) : null;
+
+  const platformList = platforms
+    .map(p => `  P${p.id}: row ${p.row}, cols ${p.minCol}–${p.maxCol}  [${p.row === playerPos.row ? 'START PLATFORM' : ''}${p.row === goalPos.row ? 'GOAL PLATFORM' : ''}]`)
+    .join('\n');
+
+  return `You are checking whether a player character can reach the FINISH from the START in a 2-D platformer game. Write in simple, fun words a 10-year-old would enjoy.
+
+COORDINATE SYSTEM (critical — read carefully):
+  - Column 0 is the LEFT edge. Column numbers increase going RIGHT.
+  - Row 0 is the TOP edge. Row numbers increase going DOWN.
+  - So a platform at row 10 is ABOVE a platform at row 20 on screen.
+  - "Jumping UP" means moving to a LOWER row number.
+
+PHYSICS (pre-calculated — trust these numbers, do not recompute):
+  - Max jump height: ${maxJumpHeightTiles.toFixed(2)} tiles (${maxJumpHeightPx.toFixed(0)} px)
+  - Max horizontal reach during one full jump: ${maxHorizReachTiles.toFixed(2)} tiles
+  - A jump DOWN to a lower platform is almost always possible if horizontal distance ≤ ${maxHorizReachTiles.toFixed(2)} tiles.
+  - A jump UP is possible only if height difference ≤ ${maxJumpHeightTiles.toFixed(2)} tiles AND horizontal distance is reachable.
+
+PLATFORMS (row = where player's feet stand; lower row number = higher on screen):
+${platformList}
+
+REACHABILITY TABLE (pre-computed — use this directly, do not second-guess it):
+${reachabilityLines.join('\n')}
+
+LEVEL:
   START (player): col ${playerPos.col}, row ${playerPos.row}
   FINISH (goal):  col ${goalPos.col}, row ${goalPos.row}
   Danger spikes:  ${spikeList}
 
-FLOORS THE CHARACTER CAN STAND ON:
-${platformList}
-
 YOUR JOB:
-1. Figure out which floor the character starts on and which floor the finish is on.
-2. Check every possible jump between floors using the movement rules above (remember to use the diagonal speed ${diagSpeed} px/s for both sideways and up/down when jumping across a gap).
-3. See if there is any path of jumps that gets the character from the start floor to the finish floor.
-4. If they can make it, list the floors in order.
-5. If they cannot make it, say where they get stuck.
+1. Find which platform the START is on and which the FINISH is on.
+2. Using ONLY the REACHABILITY TABLE above, find any sequence of platforms from START to FINISH where each step is marked REACHABLE.
+3. If such a path exists → solvable = true. List the platform IDs in order.
+4. If no path exists → solvable = false. Say exactly which jump is impossible.
 
 Return ONLY this JSON object — no words outside it:
 {

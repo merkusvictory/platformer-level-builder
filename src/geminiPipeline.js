@@ -7,88 +7,98 @@ const COLS = 50;
 const ROWS = 35;
 const MAX_RETRIES = 3;
 
-const SYSTEM_PROMPT = `Act as a High-Precision Visual Grid Parser. Your goal is to convert a hand-drawn ${COLS}x${ROWS} grid into a structured JSON object. Use your internal thinking process to verify the contents of each cell individually before finalizing the output.
+const SYSTEM_PROMPT = `You are a pixel-perfect grid transcription engine. Your sole job is to convert a photo of a hand-drawn level on grid paper into a precise JSON description using exact grid cell indices.
 
-The image is a photo of standard 3-hole-punched paper placed on a table.
+THE GRID:
+- The drawable area of the paper is divided into exactly ${COLS} columns (0–${COLS - 1}, left→right) and ${ROWS} rows (0–${ROWS - 1}, top→bottom).
+- Each printed grid square on the paper = exactly one cell.
+- Count cells by following the printed grid lines — do not estimate positions.
 
-KNOWN PAPER FEATURES TO IGNORE:
-- Three circular punch holes along one edge. They are NOT player spawn circles.
-- A blank margin strip (red or blue line) near one edge. The drawable area starts past this margin.
-- Printed grid/rule lines. These are guides, not fills.
-- Shadows, background, table surface, anything outside the paper.
+WHAT TO IGNORE (never include in output):
+- Three circular punch holes along one edge → they are paper features, NOT player markers.
+- The vertical margin line (red or blue) near one edge → marks the boundary, not content.
+- The printed grid lines themselves → guides only, not fills.
+- Shadows, wrinkles, table surface, anything outside the paper boundary.
+- Any mark smaller than half a cell or clearly accidental.
 
-Output positions as FRACTIONS (0.0 to 1.0) of the drawable grid area — NOT pixel counts, NOT cell indices.
+WHAT TO DETECT (deliberate hand-drawn marks only):
+1. PLATFORMS — solid filled/shaded rectangular regions.
+   - A cell is "filled" only if at least half of it is covered by deliberate pencil/pen marks.
+   - Group contiguous filled cells into rectangular bounding boxes.
+   - Output: { "rowStart": r0, "rowEnd": r1, "colStart": c0, "colEnd": c1 } (all inclusive, 0-indexed).
 
-Detect only deliberate hand-drawn markings inside the drawable grid area:
-1. Filled/shaded rectangular platform regions → bounding box as fractions.
-2. A single hand-drawn circle (O) → center as fractions. NOT a punch hole.
-3. A single hand-drawn star (★) → center as fractions.
-4. Triangle shapes (△/▲) drawn inside a cell → danger spikes, one per cell.
+2. PLAYER SPAWN — a hand-drawn circle (O) inside the grid. NOT a punch hole.
+   - Output: { "row": r, "col": c } of the cell whose center the circle is in.
 
-Required JSON output (no text outside it):
+3. GOAL — a hand-drawn star (★) inside the grid.
+   - Output: { "row": r, "col": c } of the cell whose center the star is in.
+
+4. SPIKES — hand-drawn triangles (△ or ▲) inside the grid, one per cell.
+   - Output: { "row": r, "col": c } for each triangle's cell.
+
+PRECISION RULES:
+- Use exact integer cell indices — no fractions, no decimals.
+- If a platform spans rows 5–7 and columns 10–19, output rowStart:5 rowEnd:7 colStart:10 colEnd:19.
+- When a region is ambiguous (could be 3 or 4 cells wide), count the grid lines it crosses.
+- Never expand a shape beyond what is clearly drawn. Under-reporting is better than over-reporting.
+
+OUTPUT — return ONLY this JSON, no other text:
 {
-  "shapes": [ { "top": <0.0–1.0>, "bottom": <0.0–1.0>, "left": <0.0–1.0>, "right": <0.0–1.0> }, ... ],
-  "playerStart": { "y": <0.0–1.0>, "x": <0.0–1.0> } or null,
-  "goal": { "y": <0.0–1.0>, "x": <0.0–1.0> } or null,
-  "spikes": [ { "y": <0.0–1.0>, "x": <0.0–1.0> }, ... ]
-}
+  "platforms": [ { "rowStart": <int>, "rowEnd": <int>, "colStart": <int>, "colEnd": <int> } ],
+  "playerStart": { "row": <int>, "col": <int> } or null,
+  "goal": { "row": <int>, "col": <int> } or null,
+  "spikes": [ { "row": <int>, "col": <int> } ]
+}`;
 
-Where top=0.0/left=0.0 is the top-left of the drawable area, bottom=1.0/right=1.0 is the bottom-right.
-When in doubt about a cell, leave it empty. Punch holes, margin lines, and printed rules are never fills.`;
+const USER_PROMPT = `Carefully examine the grid paper image and transcribe all hand-drawn content into the JSON format.
 
-const USER_PROMPT = `Examine the image. The paper is standard 3-hole-punched paper with a margin line.
+STEP 0 — Orient yourself:
+  - Find the paper boundary. Everything outside is background — ignore it.
+  - Find the three punch holes (circles on one edge) and the margin line. These are paper features — ignore them.
+  - The drawable grid starts just past the margin line. Row 0 is the topmost grid row; col 0 is the leftmost grid column after the margin.
 
-Step 0 — Find the drawable area:
-  - Locate the three punch holes (circles on one edge). Ignore them — they are NOT spawn markers.
-  - Locate the margin line (red or blue line near an edge). The drawable area starts past this margin.
-  - Define the drawable rectangle: top-left = (y=0.0, x=0.0), bottom-right = (y=1.0, x=1.0).
-  - Think through each cell of the ${COLS}×${ROWS} grid individually before deciding if it is marked.
+STEP 1 — Scan for platforms (row by row):
+  - Go through rows 0 to ${ROWS - 1} one at a time.
+  - For each row, identify which columns contain deliberate fill marks (at least 50% of the cell shaded).
+  - Group filled cells in the same row into horizontal runs.
+  - Then group runs that are vertically contiguous and horizontally aligned into rectangular platforms.
+  - For each platform, record the exact rowStart, rowEnd, colStart, colEnd (all inclusive, 0-indexed).
+  - Double-check by counting: "this platform is X cells tall × Y cells wide."
 
-Step 1 — Platforms:
-  - Inside the drawable area, find every clearly and deliberately filled/shaded region.
-  - Ignore: punch holes, margin line, printed lines, shadows, paper texture, noise.
-  - Output each as a bounding box fraction of the drawable area.
-  - Example: shape in the bottom-left quarter → top≈0.75, bottom≈1.0, left≈0.0, right≈0.25.
+STEP 2 — Find the player spawn circle:
+  - Look for a hand-drawn circle (O shape) anywhere in the drawable area.
+  - Punch holes are perfect circles on one edge of the paper — they are NOT this.
+  - Record the row and column of the cell containing the circle's center.
 
-Step 2 — Player spawn:
-  - Find a hand-drawn circle (O) inside the drawable area. Punch holes are NOT this.
-  - Output center as fractions: y = vertical fraction from top, x = horizontal fraction from left.
+STEP 3 — Find the goal star:
+  - Look for a hand-drawn star (★ or asterisk-like shape) in the drawable area.
+  - Record the row and column of the cell containing the star's center.
 
-Step 3 — Goal:
-  - Find a hand-drawn star (★) inside the drawable area.
-  - Output center as fractions.
+STEP 4 — Find spike triangles:
+  - Look for hand-drawn triangles (△ or ▲) in the drawable area.
+  - Record the row and column of each triangle's cell.
 
-Step 4 — Spikes:
-  - Find every hand-drawn triangle (△/▲) inside the drawable area.
-  - Output the center of each as fractions.
-
-Return ONLY the JSON object — no words, no markdown, no reasoning text outside the JSON:
+Return ONLY the JSON — no explanation, no markdown, no extra text:
 {
-  "shapes": [ { "top": ..., "bottom": ..., "left": ..., "right": ... }, ... ],
-  "playerStart": { "y": ..., "x": ... } or null,
-  "goal": { "y": ..., "x": ... } or null,
-  "spikes": [ { "y": ..., "x": ... }, ... ]
+  "platforms": [ { "rowStart": ..., "rowEnd": ..., "colStart": ..., "colEnd": ... } ],
+  "playerStart": { "row": ..., "col": ... } or null,
+  "goal": { "row": ..., "col": ... } or null,
+  "spikes": [ { "row": ..., "col": ... } ]
 }`;
 
 async function preprocessImage(imageBuffer) {
   return sharp(imageBuffer)
     .grayscale()
     .normalise()
-    .linear(1.3, -15)
+    .linear(1.4, -20)
     .resize(1920, null, { fit: 'inside', withoutEnlargement: true, kernel: sharp.kernel.lanczos3 })
-    .jpeg({ quality: 92 })
+    .jpeg({ quality: 95 })
     .toBuffer();
 }
 
-/**
- * Extract only the JSON object from a response string, ignoring any reasoning
- * text or thought signatures that Gemini 3 may include outside the JSON block.
- */
 function extractJSON(text) {
-  // Strip markdown fences
   const stripped = text.replace(/```(?:json)?/gi, '').replace(/```/g, '');
 
-  // Find the outermost { ... } by balanced brace walk — more robust than lastIndexOf
   const start = stripped.indexOf('{');
   if (start === -1) throw new Error('No JSON object found in response');
 
@@ -102,40 +112,39 @@ function extractJSON(text) {
   }
   if (end === -1) throw new Error('Unterminated JSON object in response');
 
-  const candidate = stripped.slice(start, end + 1);
-  const parsed = JSON.parse(candidate);
+  const parsed = JSON.parse(stripped.slice(start, end + 1));
 
-  // Strict schema validation
-  if (!Array.isArray(parsed.shapes))
-    throw new Error('"shapes" must be an array');
-  for (const s of parsed.shapes) {
-    for (const k of ['top', 'bottom', 'left', 'right']) {
-      if (typeof s[k] !== 'number' || s[k] < 0 || s[k] > 1)
-        throw new Error(`Shape has invalid "${k}": ${s[k]}`);
+  if (!Array.isArray(parsed.platforms))
+    throw new Error('"platforms" must be an array');
+
+  for (const p of parsed.platforms) {
+    for (const k of ['rowStart', 'rowEnd', 'colStart', 'colEnd']) {
+      if (!Number.isInteger(p[k]) || p[k] < 0)
+        throw new Error(`Platform has invalid "${k}": ${p[k]}`);
     }
+    if (p.rowStart > p.rowEnd) throw new Error(`Platform rowStart > rowEnd`);
+    if (p.colStart > p.colEnd) throw new Error(`Platform colStart > colEnd`);
   }
-  if (parsed.playerStart !== null && parsed.playerStart !== undefined) {
-    if (typeof parsed.playerStart.x !== 'number' || typeof parsed.playerStart.y !== 'number')
-      throw new Error('"playerStart" must have numeric x and y');
-  }
-  if (parsed.goal !== null && parsed.goal !== undefined) {
-    if (typeof parsed.goal.x !== 'number' || typeof parsed.goal.y !== 'number')
-      throw new Error('"goal" must have numeric x and y');
-  }
+
+  const checkCell = (obj, name) => {
+    if (obj == null) return;
+    if (!Number.isInteger(obj.row) || !Number.isInteger(obj.col) || obj.row < 0 || obj.col < 0)
+      throw new Error(`"${name}" must have integer row and col`);
+  };
+  checkCell(parsed.playerStart, 'playerStart');
+  checkCell(parsed.goal, 'goal');
+  if (Array.isArray(parsed.spikes)) parsed.spikes.forEach(s => checkCell(s, 'spike'));
 
   return parsed;
 }
 
-/**
- * Convert fraction-based bounding boxes into a ROWS×COLS binary grid.
- */
-function shapesToGrid(shapes) {
+function platformsToGrid(platforms) {
   const grid = Array.from({ length: ROWS }, () => Array(COLS).fill(0));
-  for (const s of shapes) {
-    const r0 = Math.max(0, Math.floor(s.top    * ROWS));
-    const r1 = Math.min(ROWS - 1, Math.ceil(s.bottom * ROWS) - 1);
-    const c0 = Math.max(0, Math.floor(s.left   * COLS));
-    const c1 = Math.min(COLS - 1, Math.ceil(s.right  * COLS) - 1);
+  for (const p of platforms) {
+    const r0 = Math.max(0, p.rowStart);
+    const r1 = Math.min(ROWS - 1, p.rowEnd);
+    const c0 = Math.max(0, p.colStart);
+    const c1 = Math.min(COLS - 1, p.colEnd);
     for (let r = r0; r <= r1; r++)
       for (let c = c0; c <= c1; c++)
         grid[r][c] = 1;
@@ -143,21 +152,14 @@ function shapesToGrid(shapes) {
   return grid;
 }
 
-/** Convert a fraction-based {x, y} point to a {row, col} grid cell. */
-function fracToCell(pt) {
-  if (!pt) return null;
+function clampCell(cell) {
+  if (!cell) return null;
   return {
-    row: Math.min(ROWS - 1, Math.max(0, Math.floor(pt.y * ROWS))),
-    col: Math.min(COLS - 1, Math.max(0, Math.floor(pt.x * COLS))),
+    row: Math.min(ROWS - 1, Math.max(0, cell.row)),
+    col: Math.min(COLS - 1, Math.max(0, cell.col)),
   };
 }
 
-/**
- * Extract the text answer from a Gemini response, handling Gemini 3 thought
- * parts and thought signatures (used in multi-turn sessions).
- *
- * Returns { text, thoughtSignature }
- */
 function extractResponseText(response) {
   let text = '';
   let thoughtSignature = null;
@@ -165,14 +167,12 @@ function extractResponseText(response) {
   const parts = response.candidates?.[0]?.content?.parts ?? [];
   for (const part of parts) {
     if (part.thought) {
-      // Thinking part — capture signature for potential multi-turn reuse
       if (part.thoughtSignature) thoughtSignature = part.thoughtSignature;
     } else if (typeof part.text === 'string') {
       text += part.text;
     }
   }
 
-  // Fallback: use the convenience .text() method if parts yielded nothing
   if (!text) {
     try { text = response.text(); } catch { /* ignore */ }
   }
@@ -180,9 +180,6 @@ function extractResponseText(response) {
   return { text, thoughtSignature };
 }
 
-/**
- * Convert an image buffer to a ROWS×COLS level grid using Gemini 3 Flash.
- */
 async function processLevelWithGemini(imageBuffer, apiKey) {
   const key = apiKey || process.env.GEMINI_API_KEY;
   if (!key) throw new Error('No Gemini API key. Set GEMINI_API_KEY in your environment.');
@@ -195,7 +192,7 @@ async function processLevelWithGemini(imageBuffer, apiKey) {
       temperature: 0,
       maxOutputTokens: 65536,
       thinkingConfig: {
-        thinkingLevel: 'MEDIUM',
+        thinkingLevel: 'HIGH',
       },
     },
   });
@@ -209,24 +206,18 @@ async function processLevelWithGemini(imageBuffer, apiKey) {
 
     const result = await model.generateContent([
       { text: USER_PROMPT },
-      {
-        inlineData: {
-          mimeType: 'image/jpeg',
-          data: base64,
-        },
-      },
+      { inlineData: { mimeType: 'image/jpeg', data: base64 } },
     ]);
 
     const { text, thoughtSignature } = extractResponseText(result.response);
     console.log(`[debug attempt ${attempt}] Response preview:`, text.slice(0, 300));
-    if (thoughtSignature) console.log('[debug] Thought signature present (length:', thoughtSignature.length, ')');
 
     try {
-      const obj        = extractJSON(text);
-      const grid       = shapesToGrid(obj.shapes);
-      const playerStart = fracToCell(obj.playerStart);
-      const goal       = fracToCell(obj.goal);
-      const spikes     = Array.isArray(obj.spikes) ? obj.spikes.map(fracToCell).filter(Boolean) : [];
+      const obj         = extractJSON(text);
+      const grid        = platformsToGrid(obj.platforms);
+      const playerStart = clampCell(obj.playerStart);
+      const goal        = clampCell(obj.goal);
+      const spikes      = Array.isArray(obj.spikes) ? obj.spikes.map(clampCell).filter(Boolean) : [];
       return { grid, playerStart, goal, spikes, thoughtSignature };
     } catch (e) {
       lastError = e;
