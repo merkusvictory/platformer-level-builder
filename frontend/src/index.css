@@ -1,0 +1,54 @@
+@import "tailwindcss";
+
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+#root {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Game canvas pixel-crisp rendering */
+canvas {
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+
+/* Focus ring that works for keyboard nav */
+:focus-visible {
+  outline: 3px solid #f97316;
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Aurora background animation */
+@keyframes aurora-move {
+  0%   { transform: translateX(0)   translateY(0)   rotate(0deg); }
+  33%  { transform: translateX(30px) translateY(-20px) rotate(120deg); }
+  66%  { transform: translateX(-20px) translateY(30px) rotate(240deg); }
+  100% { transform: translateX(0)   translateY(0)   rotate(360deg); }
+}
+
+.aurora-blob {
+  animation: aurora-move 12s ease-in-out infinite;
+}
+.aurora-blob-2 {
+  animation: aurora-move 16s ease-in-out infinite reverse;
+}
+.aurora-blob-3 {
+  animation: aurora-move 20s ease-in-out infinite 2s;
+}
+
+/* Coin particle burst */
+@keyframes coin-burst {
+  0%   { transform: scale(0) translate(0, 0); opacity: 1; }
+  100% { transform: scale(1.5) translate(var(--tx), var(--ty)); opacity: 0; }
+}
