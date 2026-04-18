@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Share2, RefreshCw, Home, Star, ChevronRight, ChevronLeft, Brain, CheckCircle, XCircle, Lightbulb, AlertTriangle, Cpu } from 'lucide-react'
+import { Share2, RefreshCw, Home, Star, ChevronRight, ChevronLeft, Brain, CheckCircle, XCircle, Lightbulb, AlertTriangle, Cpu, Pencil } from 'lucide-react'
 
 // ──────────────────────────────────────────────
 // CONSTANTS
@@ -250,6 +250,17 @@ export default function Play() {
   // Physics panel open/close
   const [physPanelOpen, setPhysPanelOpen] = useState(true)
 
+  // Live editor
+  const [editMode, setEditMode] = useState(false)
+  const [selectedTool, setSelectedTool] = useState('platform')
+  const editModeRef = useRef(false)
+  const selectedToolRef = useRef('platform')
+  const liveGridRef = useRef(null)
+  const undoStackRef = useRef([])
+  const hoverCellRef = useRef(null)
+  const isMouseDownRef = useRef(false)
+  const dragUndoSavedRef = useRef(false)
+
   // For '?' suggestion hover tooltip
   const camRef = useRef({ x: 0, y: 0 })
   const designSuggestionsRef = useRef([])
@@ -277,6 +288,9 @@ export default function Play() {
   }, [simulateMode])
   // Keep k2ResultRef in sync so the game loop can read it without closure issues
   useEffect(() => { k2ResultRef.current = k2Result }, [k2Result])
+  // Sync edit mode refs
+  useEffect(() => { editModeRef.current = editMode }, [editMode])
+  useEffect(() => { selectedToolRef.current = selectedTool }, [selectedTool])
 
   // Update a single physics param
   const setPhysParam = useCallback((key, val) => {
@@ -288,7 +302,11 @@ export default function Play() {
     if (!levelData || !canvasRef.current) return
     const canvas = canvasRef.current
     const ctx = canvas.getContext('2d')
-    const { grid, rows, cols, spawnX, spawnY, coins: initialCoins } = loadLevel(levelData)
+    const { grid: rawGrid, rows, cols, spawnX, spawnY, coins: initialCoins } = loadLevel(levelData)
+    // Working copy — edits mutate this without touching levelData.data until saved
+    const grid = rawGrid.map(r => [...r])
+    liveGridRef.current = grid
+    undoStackRef.current = []
     const TILE = TILE_SIZE
     const levelW = cols * TILE
     const levelH = rows * TILE
@@ -523,6 +541,26 @@ export default function Play() {
     }
 
     function onKeyDown(e) {
+      // Edit mode: only handle undo, block everything else
+      if (editModeRef.current) {
+        if (e.ctrlKey && e.code === 'KeyZ') {
+          e.preventDefault()
+          const prev = undoStackRef.current.pop()
+          if (prev && liveGridRef.current) {
+            for (let r = 0; r < prev.length; r++)
+              for (let c = 0; c < prev[r].length; c++)
+                liveGridRef.current[r][c] = prev[r][c]
+            if (gameRef.current) {
+              const coins = new Set()
+              for (let r = 0; r < prev.length; r++)
+                for (let c = 0; c < prev[r].length; c++)
+                  if (prev[r][c] === 'C') coins.add(`${r},${c}`)
+              gameRef.current.coins = coins
+            }
+          }
+        }
+        return
+      }
       // Any key press exits simulate mode and hands back control
       if (simulateModeRef.current) { setSimulateMode(false); return }
       g.keys[e.code] = true
@@ -545,6 +583,7 @@ export default function Play() {
 
     let wasSim = false
     function physicsUpdate(dt) {
+      if (editModeRef.current) return
       if (g.state !== 'playing') return
       // AI autopilot overrides keyboard input
       if (simulateModeRef.current) {
@@ -664,7 +703,7 @@ export default function Play() {
       ctx.clip()
 
       // Grid faint lines
-      ctx.strokeStyle = 'rgba(255,255,255,0.03)'
+      ctx.strokeStyle = editModeRef.current ? 'rgba(255,255,255,0.10)' : 'rgba(255,255,255,0.03)'
       ctx.lineWidth = 1
       const startCol = Math.floor(camX / TILE)
       const endCol   = Math.ceil((camX + gameW) / TILE)
@@ -715,6 +754,38 @@ export default function Play() {
         ctx.restore()
       }
 
+      // Edit mode hover highlight
+      if (editModeRef.current) {
+        const hc = hoverCellRef.current
+        if (hc) {
+          const hx = LABEL_LEFT + hc.col * TILE - camX
+          const hy = LABEL_TOP  + hc.row * TILE - camY
+          if (hx >= LABEL_LEFT && hx < W && hy >= LABEL_TOP && hy < H) {
+            const toolColors = {
+              platform: '#a8956a', spike: '#ef4444', coin: '#fbbf24',
+              goal: '#22c55e', player: '#f97316', eraser: '#888888',
+            }
+            ctx.save()
+            ctx.globalAlpha = 0.45
+            ctx.fillStyle = toolColors[selectedToolRef.current] ?? '#ffffff'
+            ctx.fillRect(hx, hy, TILE, TILE)
+            ctx.globalAlpha = 1
+            ctx.strokeStyle = 'rgba(255,255,255,0.6)'
+            ctx.lineWidth = 1.5
+            ctx.strokeRect(hx + 0.5, hy + 0.5, TILE - 1, TILE - 1)
+            ctx.restore()
+          }
+        }
+        // Edit mode watermark
+        ctx.save()
+        ctx.font = 'bold 11px monospace'
+        ctx.fillStyle = 'rgba(249,115,22,0.55)'
+        ctx.textAlign = 'right'
+        ctx.textBaseline = 'bottom'
+        ctx.fillText('✏ EDIT MODE', W - 8, H - 6)
+        ctx.restore()
+      }
+
       // Particles
       g.particles = g.particles.filter(p => p.life > 0)
       for (const p of g.particles) {
@@ -728,8 +799,25 @@ export default function Play() {
       ctx.globalAlpha = 1
 
       // Player
-      if (g.state === 'playing') {
+      if (g.state === 'playing' && !editModeRef.current) {
         drawPlayer(ctx, LABEL_LEFT + g.px - camX, LABEL_TOP + g.py - camY, pw, ph, simulateModeRef.current)
+      }
+
+      // Ghost spawn marker in edit mode
+      if (editModeRef.current) {
+        const sx = LABEL_LEFT + g.spawnX - camX
+        const sy = LABEL_TOP  + g.spawnY - camY
+        ctx.save()
+        ctx.globalAlpha = 0.45
+        drawPlayer(ctx, sx, sy, pw, ph, false)
+        ctx.globalAlpha = 1
+        // Label
+        ctx.font = 'bold 8px monospace'
+        ctx.textAlign = 'center'
+        ctx.textBaseline = 'bottom'
+        ctx.fillStyle = '#f97316'
+        ctx.fillText('SPAWN', sx + pw / 2, sy - 2)
+        ctx.restore()
       }
 
       // ── Simulate Mode overlay ──
@@ -1022,8 +1110,57 @@ export default function Play() {
     return () => ro.disconnect()
   }, [levelData])
 
-  // Canvas hover — show tooltip for '?' suggestion markers
+  // ── Editor helpers (defined before mouse handlers that use them) ──
+  const getGridCoords = useCallback((e) => {
+    if (!canvasRef.current) return null
+    const rect   = canvasRef.current.getBoundingClientRect()
+    const scaleX = canvasRef.current.width  / rect.width
+    const scaleY = canvasRef.current.height / rect.height
+    const mx = (e.clientX - rect.left) * scaleX
+    const my = (e.clientY - rect.top)  * scaleY
+    const { x: camX, y: camY } = camRef.current
+    const col = Math.floor((mx - LABEL_LEFT + camX) / TILE_SIZE)
+    const row = Math.floor((my - LABEL_TOP  + camY) / TILE_SIZE)
+    const g = liveGridRef.current
+    if (!g || row < 0 || col < 0 || row >= g.length || col >= (g[0]?.length ?? 0)) return null
+    return { row, col }
+  }, [])
+
+  const placeTileAt = useCallback((row, col, toolOverride) => {
+    const grid = liveGridRef.current
+    if (!grid) return
+    const tool = toolOverride ?? selectedToolRef.current
+    const tileValue = { platform: 1, spike: 'S', coin: 'C', goal: 'G', player: 'P', eraser: 0 }[tool]
+    if (tileValue === undefined) return
+
+    if (tool === 'player' || tool === 'goal') {
+      const val = tool === 'player' ? 'P' : 'G'
+      for (let r = 0; r < grid.length; r++)
+        for (let c = 0; c < grid[r].length; c++)
+          if (grid[r][c] === val) grid[r][c] = 0
+    }
+
+    const prev = grid[row][col]
+    grid[row][col] = tileValue
+
+    if (prev === 'C') gameRef.current?.coins.delete(`${row},${col}`)
+    if (tileValue === 'C' && gameRef.current) gameRef.current.coins.add(`${row},${col}`)
+    if (tool === 'player' && gameRef.current) {
+      gameRef.current.spawnX = col * TILE_SIZE
+      gameRef.current.spawnY = row * TILE_SIZE
+    }
+  }, [])
+
+  // Canvas hover — edit mode painting + tooltip for '?' suggestion markers
   const handleCanvasMouseMove = useCallback((e) => {
+    if (editModeRef.current) {
+      const coords = getGridCoords(e)
+      hoverCellRef.current = coords
+      if (isMouseDownRef.current && coords) {
+        placeTileAt(coords.row, coords.col, e.buttons === 2 ? 'eraser' : undefined)
+      }
+      return
+    }
     // Mouse movement exits simulate mode
     if (simulateModeRef.current) { setSimulateMode(false); return }
     if (!canvasRef.current || designSuggestionsRef.current.length === 0) {
@@ -1047,7 +1184,7 @@ export default function Play() {
       }
     }
     setHoveredSuggestion(null)
-  }, [])
+  }, [getGridCoords, placeTileAt])
 
   const handleUpdateAnalysis = useCallback(() => {
     verifyPhysRef.current = {
@@ -1058,6 +1195,63 @@ export default function Play() {
     }
     setVerifyTrigger(t => t + 1)
   }, [phys])
+
+  const handleCanvasMouseDown = useCallback((e) => {
+    if (!editModeRef.current) return
+    e.preventDefault()
+    isMouseDownRef.current = true
+    dragUndoSavedRef.current = false
+    const coords = getGridCoords(e)
+    if (!coords) return
+    // Save undo snapshot once at the start of each drag
+    const grid = liveGridRef.current
+    undoStackRef.current.push(grid.map(r => [...r]))
+    if (undoStackRef.current.length > 50) undoStackRef.current.shift()
+    dragUndoSavedRef.current = true
+    placeTileAt(coords.row, coords.col, e.button === 2 ? 'eraser' : undefined)
+  }, [getGridCoords, placeTileAt])
+
+  const handleCanvasMouseUp = useCallback(() => {
+    isMouseDownRef.current = false
+    dragUndoSavedRef.current = false
+  }, [])
+
+  const handleSaveLevel = useCallback(() => {
+    const grid = liveGridRef.current
+    if (!grid) return
+    const newData = { ...levelData, data: grid.map(r => [...r]) }
+    localStorage.setItem(`level_${id}`, JSON.stringify(newData))
+    setLevelData(newData)   // restarts game loop + triggers K2 re-analysis
+    setEditMode(false)
+    setPhysPanelOpen(true)
+    setToast('Level saved!')
+  }, [levelData, id])
+
+  const handleEnterEditMode = useCallback(() => {
+    setEditMode(true)
+    setPhysPanelOpen(true)   // make sure the left panel is open
+    setSimulateMode(false)
+  }, [])
+
+  const handleCancelEdit = useCallback(() => {
+    // Restore original grid (undo all unsaved edits)
+    const grid = liveGridRef.current
+    if (grid && levelData?.data) {
+      const orig = levelData.data
+      for (let r = 0; r < orig.length; r++)
+        for (let c = 0; c < orig[r].length; c++)
+          grid[r][c] = orig[r][c]
+      if (gameRef.current) {
+        const coins = new Set()
+        for (let r = 0; r < orig.length; r++)
+          for (let c = 0; c < orig[r].length; c++)
+            if (orig[r][c] === 'C') coins.add(`${r},${c}`)
+        gameRef.current.coins = coins
+      }
+    }
+    undoStackRef.current = []
+    setEditMode(false)
+  }, [levelData])
 
   const handleShare = useCallback(() => {
     navigator.clipboard.writeText(window.location.href)
@@ -1091,44 +1285,105 @@ export default function Play() {
   return (
     <div className="flex h-dvh bg-[#0f0e1a] overflow-hidden">
 
-      {/* ── Physics Sidebar ── */}
+      {/* ── Physics / Editor Sidebar ── */}
       <div className={`flex-shrink-0 flex flex-col overflow-hidden transition-all duration-300 ${physPanelOpen ? 'w-52' : 'w-0'}`}>
       <div className={`w-52 flex-shrink-0 flex flex-col p-4 gap-4 overflow-y-auto h-full transition-colors duration-300 ${
-        isDevMode
-          ? 'bg-[#060d06] border-r border-[#00ff41]/30'
-          : 'bg-[#0d0b1e] border-r border-white/10'
+        editMode
+          ? 'bg-[#110a00] border-r border-orange-500/30'
+          : isDevMode
+            ? 'bg-[#060d06] border-r border-[#00ff41]/30'
+            : 'bg-[#0d0b1e] border-r border-white/10'
       }`}>
-        <p className={`text-[10px] font-bold tracking-widest uppercase border-b pb-2 font-mono ${
-          isDevMode ? 'text-[#00ff41] border-[#00ff41]/30' : 'text-orange-400 border-white/10'
-        }`}>
-          {isDevMode ? '> PHYSICS_SYS' : 'Physics Tuner'}
-        </p>
-        <div className={`flex flex-col gap-4 ${isDevMode ? '[&_span]:font-mono [&_span]:text-[#00ff41]' : ''}`}>
-          <SliderRow label={isDevMode ? 'gravity'       : 'Gravity'}       min={400}  max={4000} step={100}  decimals={0} value={phys.gravity}      onChange={v => setPhysParam('gravity',      v)} />
-          <SliderRow label={isDevMode ? 'jump_force'    : 'Jump Strength'} min={100}  max={1400} step={50}   decimals={0} value={phys.jumpStrength} onChange={v => setPhysParam('jumpStrength', v)} />
-          <SliderRow label={isDevMode ? 'player_speed'  : 'Move Speed'}    min={50}   max={800}  step={10}   decimals={0} value={phys.moveSpeed}    onChange={v => setPhysParam('moveSpeed',    v)} />
-          <SliderRow label={isDevMode ? 'friction'      : 'Friction'}      min={0.10} max={1.00} step={0.05} decimals={2} value={phys.friction}     onChange={v => setPhysParam('friction',     v)} />
-          <SliderRow label={isDevMode ? 'max_fall'      : 'Max Fall'}      min={200}  max={3000} step={100}  decimals={0} value={phys.maxFall}      onChange={v => setPhysParam('maxFall',      v)} />
-        </div>
-        {isDevMode && (
-          <div className="bg-[#0a1a0a] border border-[#00ff41]/20 rounded-lg p-2 font-mono text-[9px] text-[#00ff41]/70 space-y-0.5">
-            <p>grav: {phys.gravity} px/s²</p>
-            <p>jump: {phys.jumpStrength} px/s</p>
-            <p>spd:  {phys.moveSpeed} px/s</p>
-            <p>fric: {phys.friction.toFixed(2)}</p>
-          </div>
+
+        {editMode ? (
+          /* ── Editor Tool Palette ── */
+          <>
+            <p className="text-[10px] font-bold tracking-widest uppercase border-b pb-2 font-mono text-orange-400 border-orange-500/30">
+              ✏ Level Editor
+            </p>
+
+            <div className="flex flex-col gap-1">
+              {[
+                { id: 'platform', label: 'Platform',    color: '#a8956a', icon: '▪' },
+                { id: 'spike',    label: 'Spike',       color: '#ef4444', icon: '▲' },
+                { id: 'coin',     label: 'Coin',        color: '#fbbf24', icon: '●' },
+                { id: 'goal',     label: 'Goal ★',      color: '#22c55e', icon: '★' },
+                { id: 'player',   label: 'Spawn Point', color: '#f97316', icon: '◆' },
+                { id: 'eraser',   label: 'Eraser',      color: '#888888', icon: '✕' },
+              ].map(tool => (
+                <button
+                  key={tool.id}
+                  onClick={() => setSelectedTool(tool.id)}
+                  className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-[11px] font-medium transition-all border ${
+                    selectedTool === tool.id
+                      ? 'border-orange-500/50 bg-orange-500/15 text-white'
+                      : 'border-transparent text-stone-400 hover:text-white hover:bg-white/5'
+                  }`}
+                >
+                  <span className="text-base leading-none" style={{ color: tool.color }}>{tool.icon}</span>
+                  {tool.label}
+                  {selectedTool === tool.id && (
+                    <span className="ml-auto text-[9px] text-orange-400 font-mono">ACTIVE</span>
+                  )}
+                </button>
+              ))}
+            </div>
+
+            <div className="border-t border-orange-500/20 pt-3 mt-auto flex flex-col gap-2">
+              <button
+                onClick={handleSaveLevel}
+                className="w-full py-2.5 px-4 bg-orange-500 hover:bg-orange-600 text-white font-bold text-xs rounded-xl transition-colors"
+              >
+                Save &amp; Play
+              </button>
+              <button
+                onClick={handleCancelEdit}
+                className="w-full py-2 px-4 bg-white/8 hover:bg-white/15 text-stone-400 hover:text-white font-medium text-xs rounded-xl transition-colors border border-white/10"
+              >
+                Cancel
+              </button>
+            </div>
+
+            <p className="text-[9px] text-stone-600 text-center leading-relaxed">
+              Click / drag to place<br />Right-click to erase<br />Ctrl+Z to undo
+            </p>
+          </>
+        ) : (
+          /* ── Physics Tuner ── */
+          <>
+            <p className={`text-[10px] font-bold tracking-widest uppercase border-b pb-2 font-mono ${
+              isDevMode ? 'text-[#00ff41] border-[#00ff41]/30' : 'text-orange-400 border-white/10'
+            }`}>
+              {isDevMode ? '> PHYSICS_SYS' : 'Physics Tuner'}
+            </p>
+            <div className={`flex flex-col gap-4 ${isDevMode ? '[&_span]:font-mono [&_span]:text-[#00ff41]' : ''}`}>
+              <SliderRow label={isDevMode ? 'gravity'       : 'Gravity'}       min={400}  max={4000} step={100}  decimals={0} value={phys.gravity}      onChange={v => setPhysParam('gravity',      v)} />
+              <SliderRow label={isDevMode ? 'jump_force'    : 'Jump Strength'} min={100}  max={1400} step={50}   decimals={0} value={phys.jumpStrength} onChange={v => setPhysParam('jumpStrength', v)} />
+              <SliderRow label={isDevMode ? 'player_speed'  : 'Move Speed'}    min={50}   max={800}  step={10}   decimals={0} value={phys.moveSpeed}    onChange={v => setPhysParam('moveSpeed',    v)} />
+              <SliderRow label={isDevMode ? 'friction'      : 'Friction'}      min={0.10} max={1.00} step={0.05} decimals={2} value={phys.friction}     onChange={v => setPhysParam('friction',     v)} />
+              <SliderRow label={isDevMode ? 'max_fall'      : 'Max Fall'}      min={200}  max={3000} step={100}  decimals={0} value={phys.maxFall}      onChange={v => setPhysParam('maxFall',      v)} />
+            </div>
+            {isDevMode && (
+              <div className="bg-[#0a1a0a] border border-[#00ff41]/20 rounded-lg p-2 font-mono text-[9px] text-[#00ff41]/70 space-y-0.5">
+                <p>grav: {phys.gravity} px/s²</p>
+                <p>jump: {phys.jumpStrength} px/s</p>
+                <p>spd:  {phys.moveSpeed} px/s</p>
+                <p>fric: {phys.friction.toFixed(2)}</p>
+              </div>
+            )}
+            <button
+              onClick={handleUpdateAnalysis}
+              disabled={k2Phase === 'thinking'}
+              className={`mt-auto py-3 px-4 font-bold text-xs tracking-widest uppercase rounded-xl transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+                isDevMode
+                  ? 'bg-[#0a1f0a] border border-[#00ff41]/50 text-[#00ff41] hover:bg-[#0f2f0f] font-mono'
+                  : 'bg-orange-500/15 border border-orange-500/40 text-orange-400 hover:bg-orange-500/25'
+              }`}
+            >
+              {isDevMode ? '> RUN_ANALYSIS' : '⚙ Update Analysis'}
+            </button>
+          </>
         )}
-        <button
-          onClick={handleUpdateAnalysis}
-          disabled={k2Phase === 'thinking'}
-          className={`mt-auto py-3 px-4 font-bold text-xs tracking-widest uppercase rounded-xl transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
-            isDevMode
-              ? 'bg-[#0a1f0a] border border-[#00ff41]/50 text-[#00ff41] hover:bg-[#0f2f0f] font-mono'
-              : 'bg-orange-500/15 border border-orange-500/40 text-orange-400 hover:bg-orange-500/25'
-          }`}
-        >
-          {isDevMode ? '> RUN_ANALYSIS' : '⚙ Update Analysis'}
-        </button>
       </div>
       </div>
 
@@ -1151,11 +1406,23 @@ export default function Play() {
             <span className="text-amber-400 text-sm font-bold">🪙 {score}</span>
           )}
           <button
+            onClick={editMode ? handleCancelEdit : handleEnterEditMode}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-mono text-xs font-bold tracking-tight transition-all border ${
+              editMode
+                ? 'bg-[#1a0e00] border-[#f97316] text-[#f97316] shadow-[0_0_10px_#f9731644]'
+                : 'bg-[#111] border-stone-700 text-stone-500 hover:text-stone-300 hover:border-stone-500'
+            }`}
+          >
+            <Pencil size={12} />
+            {editMode ? 'EDIT: ON_' : 'EDIT'}
+          </button>
+          <button
             onClick={() => setSimulateMode(s => !s)}
+            disabled={editMode}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-mono text-xs font-bold tracking-tight transition-all border ${
               simulateMode
                 ? 'bg-[#001a2e] border-[#00aaff] text-[#00d4ff] shadow-[0_0_10px_#00aaff44]'
-                : 'bg-[#111] border-stone-700 text-stone-500 hover:text-stone-300 hover:border-stone-500'
+                : 'bg-[#111] border-stone-700 text-stone-500 hover:text-stone-300 hover:border-stone-500 disabled:opacity-30 disabled:cursor-not-allowed'
             }`}
           >
             <Cpu size={12} />
@@ -1183,7 +1450,9 @@ export default function Play() {
 
         {/* HUD */}
         <div className="text-center text-[11px] text-stone-600 py-1 flex-shrink-0">
-          Arrow Keys / WASD to move · Space / Up to jump · R to reset
+          {editMode
+            ? 'Click / drag to place · Right-click to erase · Ctrl+Z to undo · Save & Play when done'
+            : 'Arrow Keys / WASD to move · Space / Up to jump · R to reset'}
         </div>
 
         {/* Canvas + K2 panel */}
@@ -1193,11 +1462,14 @@ export default function Play() {
           <div ref={containerRef} className="flex-1 relative">
             <canvas
               ref={canvasRef}
-              className="w-full h-full block"
+              className={`w-full h-full block ${editMode ? 'cursor-crosshair' : ''}`}
               aria-label="Platformer game canvas"
               tabIndex={0}
               onMouseMove={handleCanvasMouseMove}
-              onMouseLeave={() => setHoveredSuggestion(null)}
+              onMouseDown={handleCanvasMouseDown}
+              onMouseUp={handleCanvasMouseUp}
+              onMouseLeave={() => { setHoveredSuggestion(null); hoverCellRef.current = null; isMouseDownRef.current = false }}
+              onContextMenu={e => editMode && e.preventDefault()}
             />
 
             {/* Design suggestion tooltip */}
