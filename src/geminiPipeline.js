@@ -2,7 +2,7 @@ require('dotenv').config();
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const sharp = require('sharp');
 
-const MODEL = 'gemini-3-flash-preview';
+const MODEL = 'gemini-2.0-flash-lite';
 const COLS = 50;
 const ROWS = 35;
 const MAX_RETRIES = 3;
