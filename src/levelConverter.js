@@ -1,16 +1,16 @@
 require('dotenv').config();
 const fs = require('fs');
-const { processLevelWithGPT5, COLS, ROWS } = require('./gpt5Pipeline');
+const { processLevelWithGemini, COLS, ROWS } = require('./geminiPipeline');
 
 /**
- * Full pipeline: imageBuffer → GPT-5.4-mini Vision → validated 2-D binary grid
+ * Full pipeline: imageBuffer → Gemini 2.5 Flash Vision → validated 2-D binary grid
  *
  * @param {Buffer} imageBuffer  Raw image bytes (JPEG, PNG, etc.)
- * @param {string} [apiKey]     OpenAI key — falls back to OPENAI_API_KEY env var
+ * @param {string} [apiKey]     Gemini key — falls back to GEMINI_API_KEY env var
  */
 async function processLevelImage(imageBuffer, apiKey) {
-  console.log('[1/2] Pre-processing image and calling GPT-5.4-mini Vision…');
-  const grid = await processLevelWithGPT5(imageBuffer, apiKey);
+  console.log('[1/2] Pre-processing image and calling Gemini 2.5 Flash Vision…');
+  const grid = await processLevelWithGemini(imageBuffer, apiKey);
 
   console.log('[2/2] Validation passed.');
   return {

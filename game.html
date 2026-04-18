@@ -1,0 +1,422 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Platformer</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: #1a1a2e;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      font-family: monospace;
+    }
+    canvas {
+      display: block;
+      border: 2px solid #444;
+      image-rendering: pixelated;
+    }
+    #hud {
+      color: #aaa;
+      font-size: 13px;
+      margin-top: 8px;
+    }
+    #uploader {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-top: 14px;
+    }
+    #uploadLabel {
+      cursor: pointer;
+      background: #fff;
+      color: #111;
+      font-family: monospace;
+      font-size: 14px;
+      padding: 8px 16px;
+      border: 2px solid #fff;
+    }
+    #uploadLabel:hover { background: #ddd; }
+    #imageInput { display: none; }
+    #uploadStatus {
+      font-family: monospace;
+      font-size: 13px;
+      color: #aaa;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="gameCanvas" width="1200" height="800"></canvas>
+  <div id="hud">Arrow Keys / WASD to move &nbsp;|&nbsp; Up / W / Space to jump</div>
+
+  <div id="uploader">
+    <label id="uploadLabel" for="imageInput">📷 Upload grid image</label>
+    <input type="file" id="imageInput" accept="image/*">
+    <span id="uploadStatus"></span>
+  </div>
+
+  <script>
+  // ================================================================
+  // PHYSICS CONSTANTS — change these to tune game feel
+  // ================================================================
+  const GRAVITY       = 1800;  // px/s² — increase for heavier feel
+  const JUMP_STRENGTH =  600;  // px/s  — increase for higher jumps
+  const MOVE_SPEED    =  280;  // px/s  — horizontal speed
+  const FRICTION      =  0.75; // per-frame vx multiplier when no key held (0=instant stop)
+  const MAX_FALL      = 1400;  // px/s  — terminal velocity
+  const TILE_SIZE     =   32;  // px    — default tile size
+
+  // ================================================================
+  // INPUT
+  // ================================================================
+  const Input = {
+    _keys: {},
+    init() {
+      window.addEventListener('keydown', e => {
+        this._keys[e.code] = true;
+        // Prevent arrow keys from scrolling the page
+        if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space'].includes(e.code))
+          e.preventDefault();
+      });
+      window.addEventListener('keyup', e => { this._keys[e.code] = false; });
+    },
+    left()  { return !!(this._keys['ArrowLeft']  || this._keys['KeyA']); },
+    right() { return !!(this._keys['ArrowRight'] || this._keys['KeyD']); },
+    jump()  { return !!(this._keys['ArrowUp']    || this._keys['KeyW'] || this._keys['Space']); },
+  };
+
+  // ================================================================
+  // LEVEL — renders the grid and provides tile queries
+  // ================================================================
+  class Level {
+    /**
+     * @param {Array<Array<number|string>>} grid  2-D array of tile values
+     * @param {number} tileSize  Pixel size of each cell
+     */
+    constructor(grid, tileSize = TILE_SIZE) {
+      this.grid     = grid;
+      this.tileSize = tileSize;
+      this.rows     = grid.length;
+      this.cols     = grid[0]?.length ?? 0;
+      this.width    = this.cols * tileSize;
+      this.height   = this.rows * tileSize;
+    }
+
+    getTile(row, col) {
+      if (row < 0 || row >= this.rows || col < 0 || col >= this.cols) return 1; // out-of-bounds = solid wall
+      return this.grid[row][col];
+    }
+
+    isSolid(row, col) { return this.getTile(row, col) === 1; }
+
+    /** Find the first occurrence of a tile type. Returns {row, col} or null. */
+    findTile(type) {
+      for (let r = 0; r < this.rows; r++)
+        for (let c = 0; c < this.cols; c++)
+          if (this.grid[r][c] === type) return { row: r, col: c };
+      return null;
+    }
+
+    draw(ctx, camX, camY) {
+      const ts = this.tileSize;
+
+      for (let r = 0; r < this.rows; r++) {
+        for (let c = 0; c < this.cols; c++) {
+          const tile = this.grid[r][c];
+          const x = c * ts - camX;
+          const y = r * ts - camY;
+
+          if      (tile === 1)   this._drawPlatform(ctx, x, y, ts);
+          else if (tile === 'S') this._drawSpike(ctx, x, y, ts);
+          else if (tile === 'G') this._drawGoal(ctx, x, y, ts);
+          else if (tile === 'P') this._drawSpawn(ctx, x, y, ts);
+        }
+      }
+    }
+
+    _drawPlatform(ctx, x, y, ts) {
+      ctx.fillStyle = '#000';
+      ctx.fillRect(x, y, ts, ts);
+    }
+
+    _drawSpike(ctx, x, y, ts) {
+      ctx.fillStyle = '#000';
+      ctx.beginPath();
+      ctx.moveTo(x + ts / 2, y);
+      ctx.lineTo(x + ts, y + ts);
+      ctx.lineTo(x, y + ts);
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    _drawGoal(ctx, x, y, ts) {
+      ctx.fillStyle = '#000';
+      ctx.font = `${ts}px monospace`;
+      ctx.textAlign = 'center';
+      ctx.fillText('★', x + ts / 2, y + ts - 2);
+    }
+
+    _drawSpawn(ctx, x, y, ts) { /* no marker in simple mode */ }
+  }
+
+  // ================================================================
+  // ENTITY (PLAYER) — physics + AABB collision
+  // ================================================================
+  class Entity {
+    /**
+     * @param {number} x  World x (left edge)
+     * @param {number} y  World y (top edge)
+     * @param {number} w  Width in pixels
+     * @param {number} h  Height in pixels
+     */
+    constructor(x, y, w, h) {
+      this.x = x;  this.y = y;
+      this.vx = 0; this.vy = 0;
+      this.w = w;  this.h = h;
+      this.onGround = false;
+    }
+
+    update(dt, level) {
+      // --- Horizontal movement ---
+      if (Input.left())  this.vx = -MOVE_SPEED;
+      if (Input.right()) this.vx =  MOVE_SPEED;
+      if (!Input.left() && !Input.right()) {
+        this.vx *= FRICTION;
+        if (Math.abs(this.vx) < 0.5) this.vx = 0;
+      }
+
+      // --- Jump (only when standing on ground) ---
+      if (Input.jump() && this.onGround) {
+        this.vy = -JUMP_STRENGTH;
+        this.onGround = false;
+      }
+
+      // --- Gravity ---
+      this.vy = Math.min(this.vy + GRAVITY * dt, MAX_FALL);
+
+      // --- Integrate position & resolve collisions ---
+      // X axis first, then Y — keeps corner collisions clean
+      this.x += this.vx * dt;
+      this._resolveX(level);
+
+      this.onGround = false;
+      this.y += this.vy * dt;
+      this._resolveY(level);
+    }
+
+    // Push player out of solid tiles on the X axis
+    _resolveX(level) {
+      const ts = level.tileSize;
+      const left   = Math.floor(this.x / ts);
+      const right  = Math.floor((this.x + this.w - 1) / ts);
+      const top    = Math.floor(this.y / ts);
+      const bottom = Math.floor((this.y + this.h - 1) / ts);
+
+      for (let r = top; r <= bottom; r++) {
+        if (this.vx > 0 && level.isSolid(r, right)) {
+          this.x = right * ts - this.w;
+          this.vx = 0;
+        }
+        if (this.vx < 0 && level.isSolid(r, left)) {
+          this.x = (left + 1) * ts;
+          this.vx = 0;
+        }
+      }
+    }
+
+    // Push player out of solid tiles on the Y axis
+    _resolveY(level) {
+      const ts = level.tileSize;
+      const left   = Math.floor(this.x / ts);
+      const right  = Math.floor((this.x + this.w - 1) / ts);
+      const top    = Math.floor(this.y / ts);
+      const bottom = Math.floor((this.y + this.h - 1) / ts);
+
+      for (let c = left; c <= right; c++) {
+        if (this.vy > 0 && level.isSolid(bottom, c)) {
+          this.y = bottom * ts - this.h;
+          this.vy = 0;
+          this.onGround = true;
+        }
+        if (this.vy < 0 && level.isSolid(top, c)) {
+          this.y = (top + 1) * ts;
+          this.vy = 0;
+        }
+      }
+    }
+
+    draw(ctx, camX, camY) {
+      ctx.fillStyle = '#f00';
+      ctx.fillRect(this.x - camX, this.y - camY, this.w, this.h);
+    }
+  }
+
+  // ================================================================
+  // GAME STATE
+  // ================================================================
+  const canvas = document.getElementById('gameCanvas');
+  const ctx    = canvas.getContext('2d');
+
+  let level   = null;
+  let player  = null;
+  let state   = 'playing'; // 'playing' | 'dead' | 'win'
+  let spawnX  = 0;
+  let spawnY  = 0;
+  let offsetX = 0; // pixel offset to centre level on canvas
+  let offsetY = 0;
+
+  function spawnPlayer() {
+    const ts = level.tileSize;
+    player   = new Entity(spawnX, spawnY, ts * 0.75, ts * 0.9);
+    state    = 'playing';
+  }
+
+  // ================================================================
+  // PUBLIC API — call this with the JSON grid from the converter
+  // ================================================================
+  function loadGeneratedLevel(jsonGrid) {
+    const W = canvas.width, H = canvas.height;
+    const cols = jsonGrid[0]?.length ?? 1;
+    const rows = jsonGrid.length;
+    // Fit entire level on canvas with a small margin
+    const ts = Math.floor(Math.min((W - 16) / cols, (H - 16) / rows));
+
+    level   = new Level(jsonGrid, ts);
+    state   = 'playing';
+    offsetX = Math.floor((W - level.width)  / 2);
+    offsetY = Math.floor((H - level.height) / 2);
+
+    const spawn = level.findTile('P');
+    // Player world coords live in grid space (no offset) — offset is draw-only
+    spawnX = spawn ? spawn.col * ts : ts;
+    spawnY = spawn ? spawn.row * ts : ts;
+
+    spawnPlayer();
+  }
+
+  // ================================================================
+  // UPDATE
+  // ================================================================
+  function update(dt) {
+    if (state !== 'playing' || !player || !level) return;
+
+    player.update(dt, level);
+
+    // Fell out of the bottom of the level
+    if (player.y > level.height + 200) {
+      state = 'dead';
+      setTimeout(spawnPlayer, 700);
+      return;
+    }
+
+    // Tile-overlap checks for spikes and goal
+    const ts = level.tileSize;
+    const r0 = Math.floor(player.y / ts);
+    const r1 = Math.floor((player.y + player.h - 1) / ts);
+    const c0 = Math.floor(player.x / ts);
+    const c1 = Math.floor((player.x + player.w - 1) / ts);
+
+    for (let r = r0; r <= r1; r++) {
+      for (let c = c0; c <= c1; c++) {
+        const tile = level.getTile(r, c);
+        if (tile === 'S') { state = 'dead'; setTimeout(spawnPlayer, 700); return; }
+        if (tile === 'G') { state = 'win'; return; }
+      }
+    }
+  }
+
+  // ================================================================
+  // DRAW
+  // ================================================================
+  function draw() {
+    const W = canvas.width, H = canvas.height;
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0, 0, W, H);
+
+    if (!level) {
+      ctx.fillStyle = '#333';
+      ctx.font = '18px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText('No level loaded.', W / 2, H / 2);
+      return;
+    }
+
+    // Draw level at its centred offset (camX = -offsetX so tiles land at the right spot)
+    level.draw(ctx, -offsetX, -offsetY);
+    if (player) player.draw(ctx, -offsetX, -offsetY);
+
+    if (state === 'dead') {
+      ctx.fillStyle = 'rgba(160,0,0,0.4)';
+      ctx.fillRect(0, 0, W, H);
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 32px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText('YOU DIED — Respawning…', W / 2, H / 2);
+    }
+
+    if (state === 'win') {
+      ctx.fillStyle = 'rgba(0,0,0,0.5)';
+      ctx.fillRect(0, 0, W, H);
+      ctx.fillStyle = '#000';
+      ctx.font = 'bold 42px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText('LEVEL COMPLETE!', W / 2, H / 2);
+    }
+  }
+
+  // ================================================================
+  // GAME LOOP
+  // ================================================================
+  let lastTime = 0;
+
+  function loop(timestamp) {
+    const dt = Math.min((timestamp - lastTime) / 1000, 0.05); // cap delta to 50 ms
+    lastTime = timestamp;
+    update(dt);
+    draw();
+    requestAnimationFrame(loop);
+  }
+
+  // ================================================================
+  // BOOT
+  // ================================================================
+  Input.init();
+  requestAnimationFrame(loop);
+
+  // ---- Load level from level_output.json on startup ----
+  fetch('level_output.json')
+    .then(r => r.json())
+    .then(json => loadGeneratedLevel(json.data))
+    .catch(err => console.error('Failed to load level_output.json:', err));
+
+  // ---- Upload button ----
+  document.getElementById('imageInput').addEventListener('change', async function () {
+    const file = this.files[0];
+    if (!file) return;
+
+    const status = document.getElementById('uploadStatus');
+    status.textContent = 'Converting…';
+
+    const form = new FormData();
+    form.append('image', file);
+
+    try {
+      const res  = await fetch('/upload', { method: 'POST', body: form });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || 'Upload failed');
+      loadGeneratedLevel(json.data);
+      status.textContent = '✓ Level loaded!';
+    } catch (err) {
+      status.textContent = '✗ ' + err.message;
+      console.error(err);
+    }
+
+    // Reset so the same file can be re-uploaded
+    this.value = '';
+  });
+  </script>
+</body>
+</html>
