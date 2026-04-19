@@ -375,10 +375,13 @@ export default function Play() {
       const isSpike = (r, c) => grid[r]?.[c] === 'S'
 
       // 2. Physics envelope — recalculated from current slider values every call
-      const { jumpStrength, gravity, moveSpeed } = physRef.current
+      const { jumpStrength, gravity, moveSpeed, friction } = physRef.current
       const apexTiles  = jumpStrength * jumpStrength / (2 * gravity * TILE) // max height (tiles)
-      const airTime    = 2 * jumpStrength / gravity                          // full air time (s)
-      const reachTiles = (moveSpeed / Math.SQRT2) * airTime / TILE           // horizontal reach (tiles)
+      const airTime    = 2 * jumpStrength / gravity                          // full jump arc (s)
+      const airTimeMs  = airTime * 1000                                      // full jump arc (ms)
+      const reachTiles = moveSpeed * airTime / TILE                           // horizontal reach (tiles)
+      // Time (ms) to travel one tile on the ground — used for post-jump move durations
+      const tileMs     = TILE / moveSpeed * 1000
 
       // 3. Ceiling clearance: free tiles directly above player
       let ceilClear = 0
@@ -429,44 +432,61 @@ export default function Play() {
       // Each branch first checks ideal conditions, then falls back to
       // "attempt anyway" — the bot should try rather than stand still.
 
+      // Jump durations derived from physics:
+      //   spikeJumpMs  — enough to arc over one tile (~55% of full arc)
+      //   wallJumpMs1  — clear a 1-tile wall (~50% arc)
+      //   wallJumpMs2  — clear a 2-tile wall (~65% arc)
+      //   gapJumpMs(n) — proportional to gap width vs total reach, capped at full arc
+      //   elevJumpMs   — short tap for rising to a higher platform (~35% arc)
+      // Post-jump move: hold direction for full air time so bot keeps crossing gap,
+      //   then sensor cuts it on landing.
+      const spikeJumpMs  = Math.round(airTimeMs * 0.55)
+      const wallJumpMs1  = Math.round(airTimeMs * 0.50)
+      const wallJumpMs2  = Math.round(airTimeMs * 0.65)
+      const gapJumpMs = (n) => Math.round(Math.min((n / reachTiles) * airTimeMs * 1.15, airTimeMs))
+      const elevJumpMs   = Math.round(airTimeMs * 0.35)
+      const crossMs      = Math.round(airTimeMs * 2)   // post-jump move — sensor will cut early
+
       // Spike at foot level → must jump
       if (t1.spike) {
         if (canJump)
-          return [{ type: jump, duration: 420, label: clears(1) ? 'JUMP_SPIKE' : 'SPIKE_ATTEMPT' },
-                  { type: move, duration: 260, label: 'CLEAR_SPIKE' }]
-        return [{ type: 'WAIT', duration: 300, label: 'SPIKE_NO_ROOM' }]
+          return [{ type: jump, duration: spikeJumpMs, label: clears(1) ? 'JUMP_SPIKE' : 'SPIKE_ATTEMPT' },
+                  { type: move, duration: crossMs, label: 'CLEAR_SPIKE' }]
+        return [{ type: 'WAIT', duration: 200, label: 'SPIKE_NO_ROOM' }]
       }
 
       // Wall ahead → hop over; height = 1 or 2 tiles
       if (t1.wall) {
         if (canJump) {
           const h = t1.ceil ? 2 : 1
-          return [{ type: jump, duration: h > 1 ? 480 : 360, label: clears(h) ? 'JUMP_WALL' : 'WALL_ATTEMPT' },
-                  { type: move, duration: 260, label: 'CLEAR_WALL' }]
+          return [{ type: jump, duration: h > 1 ? wallJumpMs2 : wallJumpMs1, label: clears(h) ? 'JUMP_WALL' : 'WALL_ATTEMPT' },
+                  { type: move, duration: crossMs, label: 'CLEAR_WALL' }]
         }
-        return [{ type: 'WAIT', duration: 300, label: 'WALL_NO_ROOM' }]
+        return [{ type: 'WAIT', duration: 200, label: 'WALL_NO_ROOM' }]
       }
 
-      // Gap ahead → jump if within reach, otherwise attempt anyway
+      // Gap ahead — only jump if there is solid landing within physics reach.
+      // gapWidth = last void tile index; if no ground found before scan end, don't attempt.
       if (gapAhead) {
-        if (canJump)
-          return [{ type: jump, duration: 460, label: gapWidth <= reachTiles ? `JUMP_GAP_${gapWidth}T` : 'GAP_ATTEMPT' }]
-        return [{ type: 'WAIT', duration: 300, label: 'GAP_NO_JUMP' }]
+        const hasLanding = gapWidth < Math.ceil(reachTiles) + 2
+        if (canJump && hasLanding && gapWidth <= Math.ceil(reachTiles)) {
+          return [{ type: jump, duration: gapJumpMs(gapWidth), label: `JUMP_GAP_${gapWidth}T` },
+                  { type: move, duration: crossMs, label: 'CROSS_GAP' }]
+        }
+        return [{ type: 'WAIT', duration: 200, label: hasLanding ? 'GAP_TOO_WIDE' : 'VOID_AHEAD' }]
       }
 
       // Goal is elevated → jump + move toward it
-      if (dy < -1 && g.onGround) {
+      if (dy < 0 && g.onGround) {
         if (canJump)
-          return [{ type: jump, duration: 140, label: clears(-dy) ? 'JUMP_ELEVATED' : 'ELEVATED_ATTEMPT' },
-                  { type: move, duration: 380, label: 'RISE_TO_GOAL' }]
+          return [{ type: jump, duration: elevJumpMs, label: clears(-dy) ? 'JUMP_ELEVATED' : 'ELEVATED_ATTEMPT' },
+                  { type: move, duration: crossMs, label: 'RISE_TO_GOAL' }]
       }
 
       // Default: walk toward goal.
-      // If K2 flagged this area as a bottleneck, creep forward slowly
-      // so the safety sensor has time to react before we commit.
       if (nearBottleneck) {
         const reason = nearBottleneck.reason?.slice(0, 40) ?? 'K2 flagged danger'
-        return [{ type: move, duration: 160, label: `K2_CAUTION: ${reason}` }]
+        return [{ type: move, duration: Math.round(tileMs * 2), label: `K2_CAUTION: ${reason}` }]
       }
       const stride = Math.min(Math.abs(dx) * 60 + 200, 400)
       return [{ type: move, duration: stride, label: 'APPROACH_GOAL' }]
@@ -516,10 +536,10 @@ export default function Play() {
         const withPauses = []
         for (const c of cmds) {
           withPauses.push(c)
-          withPauses.push({ type: 'WAIT', duration: 700, label: 'PAUSE' })
+          withPauses.push({ type: 'WAIT', duration: 200, label: 'PAUSE' })
         }
         ai.queue = withPauses.slice(1)
-        ai.current = withPauses[0] ?? { type: 'WAIT', duration: 400, label: 'IDLE' }
+        ai.current = withPauses[0] ?? { type: 'WAIT', duration: 200, label: 'IDLE' }
         ai.timer = 0
       }
 
@@ -600,7 +620,13 @@ export default function Play() {
       const goLeft  = !!(g.keys['ArrowLeft']  || g.keys['KeyA'])
       const goRight = !!(g.keys['ArrowRight'] || g.keys['KeyD'])
 
-      const hSpeed = g.onGround ? moveSpeed : moveSpeed / Math.SQRT2
+      // Normalize diagonal movement: when moving horizontally while airborne,
+      // scale vx so the combined (vx, vy) vector stays at moveSpeed magnitude.
+      let hSpeed = moveSpeed
+      if (!g.onGround && (goLeft || goRight) && g.pvy !== 0) {
+        const scale = Math.min(moveSpeed / Math.sqrt(moveSpeed * moveSpeed + g.pvy * g.pvy), 1)
+        hSpeed = moveSpeed * scale
+      }
       if (goLeft)  g.pvx = -hSpeed
       if (goRight) g.pvx =  hSpeed
       if (!goLeft && !goRight) { g.pvx *= friction; if (Math.abs(g.pvx) < 0.5) g.pvx = 0 }

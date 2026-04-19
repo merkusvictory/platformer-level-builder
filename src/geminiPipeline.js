@@ -191,6 +191,7 @@ async function processLevelWithGemini(imageBuffer, apiKey) {
     generationConfig: {
       temperature: 0,
       maxOutputTokens: 8192,
+      thinkingConfig: { thinkingBudget: 0 },
     },
   });
 
