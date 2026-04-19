@@ -82,6 +82,125 @@ function drawPlayer(ctx, x, y, w, h, cpuMode = false) {
   ctx.restore()
 }
 
+function drawWalker(ctx, x, y, ts, frame) {
+  // Red enemy with bouncing animation
+  const bob = Math.sin(frame * 0.1) * 2
+  ctx.fillStyle = '#ef4444'
+  ctx.fillRect(x + 4, y + ts * 0.4 + bob, ts - 8, ts * 0.5)
+  // eyes
+  ctx.fillStyle = '#fff'
+  ctx.fillRect(x + 6, y + ts * 0.45 + bob, 4, 4)
+  ctx.fillRect(x + ts - 10, y + ts * 0.45 + bob, 4, 4)
+  ctx.fillStyle = '#000'
+  ctx.fillRect(x + 7, y + ts * 0.46 + bob, 2, 2)
+  ctx.fillRect(x + ts - 9, y + ts * 0.46 + bob, 2, 2)
+  // legs
+  ctx.fillStyle = '#b91c1c'
+  const legPhase = Math.sin(frame * 0.15) * 4
+  ctx.fillRect(x + 6, y + ts * 0.9, 4, 4 + legPhase)
+  ctx.fillRect(x + ts - 10, y + ts * 0.9, 4, 4 - legPhase)
+}
+
+function drawSaw(ctx, x, y, ts, frame) {
+  // Spinning saw blade
+  ctx.save()
+  ctx.translate(x + ts / 2, y + ts / 2)
+  ctx.rotate(frame * 0.15)
+  ctx.fillStyle = '#94a3b8'
+  ctx.beginPath()
+  const teeth = 8
+  for (let i = 0; i < teeth; i++) {
+    const a1 = (i / teeth) * Math.PI * 2
+    const a2 = ((i + 0.5) / teeth) * Math.PI * 2
+    ctx.lineTo(Math.cos(a1) * ts * 0.45, Math.sin(a1) * ts * 0.45)
+    ctx.lineTo(Math.cos(a2) * ts * 0.3, Math.sin(a2) * ts * 0.3)
+  }
+  ctx.closePath()
+  ctx.fill()
+  ctx.fillStyle = '#475569'
+  ctx.beginPath()
+  ctx.arc(0, 0, ts * 0.15, 0, Math.PI * 2)
+  ctx.fill()
+  ctx.restore()
+}
+
+function drawSpring(ctx, x, y, ts) {
+  // Yellow coiled spring
+  ctx.fillStyle = '#fbbf24'
+  ctx.fillRect(x + 4, y + ts * 0.7, ts - 8, ts * 0.3)
+  ctx.strokeStyle = '#f59e0b'
+  ctx.lineWidth = 2
+  for (let i = 0; i < 4; i++) {
+    ctx.beginPath()
+    ctx.moveTo(x + 4 + (i % 2) * 4, y + ts * 0.3 + i * (ts * 0.1))
+    ctx.lineTo(x + ts - 4 - (i % 2) * 4, y + ts * 0.3 + (i + 1) * (ts * 0.1))
+    ctx.stroke()
+  }
+}
+
+function drawCrumble(ctx, x, y, ts, crumbleProgress) {
+  // Crumbling platform - brown with cracks based on crumbleProgress (0-1)
+  const alpha = 1 - crumbleProgress * 0.7
+  ctx.globalAlpha = alpha
+  ctx.fillStyle = '#92400e'
+  ctx.fillRect(x, y, ts, ts)
+  ctx.fillStyle = '#78350f'
+  ctx.fillRect(x, y, ts, 3)
+  // Crack lines based on progress
+  if (crumbleProgress > 0.2) {
+    ctx.strokeStyle = '#1c0a00'
+    ctx.lineWidth = 1
+    ctx.beginPath()
+    ctx.moveTo(x + ts * 0.3, y); ctx.lineTo(x + ts * 0.5, y + ts)
+    ctx.moveTo(x + ts * 0.7, y); ctx.lineTo(x + ts * 0.4, y + ts)
+    ctx.stroke()
+  }
+  ctx.globalAlpha = 1
+}
+
+function drawFlyer(ctx, x, y, ts, frame) {
+  const bob = Math.sin(frame * 0.08) * (ts * 0.18)
+  ctx.save()
+  ctx.translate(x + ts / 2, y + ts / 2 + bob)
+  ctx.fillStyle = '#a855f7'
+  ctx.beginPath()
+  ctx.ellipse(0, 0, ts * 0.38, ts * 0.28, 0, 0, Math.PI * 2)
+  ctx.fill()
+  // wings
+  ctx.fillStyle = 'rgba(168,85,247,0.5)'
+  const wingFlap = Math.sin(frame * 0.25) * 0.4
+  ctx.save(); ctx.rotate(-0.5 + wingFlap)
+  ctx.beginPath(); ctx.ellipse(-ts * 0.42, 0, ts * 0.32, ts * 0.14, 0, 0, Math.PI * 2); ctx.fill()
+  ctx.restore()
+  ctx.save(); ctx.rotate(0.5 - wingFlap)
+  ctx.beginPath(); ctx.ellipse(ts * 0.42, 0, ts * 0.32, ts * 0.14, 0, 0, Math.PI * 2); ctx.fill()
+  ctx.restore()
+  // eyes
+  ctx.fillStyle = '#fff'
+  ctx.beginPath(); ctx.arc(-ts * 0.1, -ts * 0.06, ts * 0.07, 0, Math.PI * 2); ctx.fill()
+  ctx.beginPath(); ctx.arc(ts * 0.1, -ts * 0.06, ts * 0.07, 0, Math.PI * 2); ctx.fill()
+  ctx.fillStyle = '#1e0a2e'
+  ctx.beginPath(); ctx.arc(-ts * 0.08, -ts * 0.06, ts * 0.04, 0, Math.PI * 2); ctx.fill()
+  ctx.beginPath(); ctx.arc(ts * 0.12, -ts * 0.06, ts * 0.04, 0, Math.PI * 2); ctx.fill()
+  ctx.restore()
+}
+
+function drawMovingPlatform(ctx, x, y, ts, offsetX) {
+  const px = x + offsetX
+  ctx.fillStyle = '#06b6d4'
+  ctx.fillRect(px, y + ts * 0.6, ts, ts * 0.4)
+  ctx.fillStyle = '#22d3ee'
+  ctx.fillRect(px, y + ts * 0.6, ts, ts * 0.12)
+  ctx.fillStyle = '#0e7490'
+  ctx.fillRect(px, y + ts * 0.88, ts, ts * 0.12)
+  // direction arrows
+  ctx.fillStyle = 'rgba(255,255,255,0.4)'
+  ctx.font = `${Math.round(ts * 0.28)}px monospace`
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'middle'
+  ctx.fillText('↔', px + ts / 2, y + ts * 0.75)
+}
+
 function roundRect(ctx, x, y, w, h, r) {
   ctx.beginPath()
   ctx.moveTo(x + r, y)
@@ -113,9 +232,22 @@ function makeParticles(x, y) {
 // ──────────────────────────────────────────────
 // TILE HELPERS
 // ──────────────────────────────────────────────
+// Module-level reference to the active crumble map, set by the game loop useEffect
+let _activeCrumbleMap = null
+
 function isSolid(grid, row, col) {
   if (row < 0 || col < 0 || row >= grid.length || col >= (grid[0]?.length ?? 0)) return false
-  const t = grid[row][col]; return t === 1 || t === 'T'
+  const t = grid[row][col]
+  if (t === 1 || t === 'T' || t === 'B') {
+    if (t === 'B' && _activeCrumbleMap) {
+      const cs = _activeCrumbleMap.get(`${row},${col}`)
+      if (cs?.falling || cs?.fallen) return false
+    }
+    return true
+  }
+  if (t === 'J') return true  // spring is solid
+  // M (moving platform) and F (flyer) are handled as dynamic entities, not grid collision
+  return false
 }
 
 function getTile(grid, row, col) {
@@ -216,6 +348,8 @@ export default function Play() {
   const [loadError, setLoadError] = useState(null)
   const [gameWon, setGameWon] = useState(false)
   const [winTime, setWinTime] = useState(0)
+  const [rageQuit, setRageQuit] = useState(false)
+  const [deathCount, setDeathCount] = useState(0)
 
   // Physics slider state (drives UI + game loop via physRef)
   const [phys, setPhys] = useState({
@@ -261,6 +395,41 @@ export default function Play() {
   const isMouseDownRef = useRef(false)
   const dragUndoSavedRef = useRef(false)
 
+  // Hard Mode
+  const [isHardMode, setIsHardMode]           = useState(false)
+  const [hardModeData, setHardModeData]       = useState(null)
+  const [hardModeLoading, setHardModeLoading] = useState(false)
+  const [hardModeError, setHardModeError]     = useState(null)
+  const [showWhyCard, setShowWhyCard]         = useState(false)
+  const [hardDifficulty, setHardDifficulty]   = useState(null) // 'light'|'medium'|'brutal'
+  const isHardModeRef                         = useRef(false)
+
+  // Telemetry
+  const telemetryRef = useRef({
+    deaths: 0,
+    deathPoints: [],
+    jumps: 0,
+    coinsCollected: 0,
+    coinsTotal: 0,
+    reachedGoal: false,
+    idleTime: 0,
+    pathSampled: [],
+    startTime: Date.now(),
+    endTime: null,
+  })
+  // Crumble state: Map<"row,col" -> { timer: ms since stepped, falling: bool }>
+  const crumbleRef = useRef(new Map())
+  // Walker state: Map<"row,col" -> { x: px, y: px, vx: px/s, alive: bool }>
+  const walkersRef = useRef(new Map())
+  // Flyer entities (F tile): array of { x, centerY, amplitude, speed }
+  const flyersRef = useRef([])
+  // Moving platform entities (M tile): array of { baseX, baseY, range, speed }
+  const movingPlatformsRef = useRef([])
+  // Screen shake: frames remaining
+  const shakeRef = useRef(0)
+  // Original level data for restart
+  const originalLevelDataRef = useRef(null)
+
   // For '?' suggestion hover tooltip
   const camRef = useRef({ x: 0, y: 0 })
   const designSuggestionsRef = useRef([])
@@ -271,7 +440,11 @@ export default function Play() {
   useEffect(() => {
     const raw = localStorage.getItem(`level_${id}`)
     if (!raw) { setLoadError('Level not found. It may have expired or the link is invalid.'); return }
-    try { setLevelData(JSON.parse(raw)) } catch { setLoadError('Level data is corrupted.') }
+    try {
+      const parsed = JSON.parse(raw)
+      originalLevelDataRef.current = parsed
+      setLevelData(parsed)
+    } catch { setLoadError('Level data is corrupted.') }
   }, [id])
 
   // Sync phys state → physRef so game loop always reads latest values
@@ -291,6 +464,8 @@ export default function Play() {
   // Sync edit mode refs
   useEffect(() => { editModeRef.current = editMode }, [editMode])
   useEffect(() => { selectedToolRef.current = selectedTool }, [selectedTool])
+  // Sync isHardMode → isHardModeRef
+  useEffect(() => { isHardModeRef.current = isHardMode }, [isHardMode])
 
   // Update a single physics param
   const setPhysParam = useCallback((key, val) => {
@@ -311,6 +486,35 @@ export default function Play() {
     const levelW = cols * TILE
     const levelH = rows * TILE
 
+    // Point the module-level crumble map accessor to this component's crumbleRef
+    _activeCrumbleMap = crumbleRef.current
+
+    // Initialize flyer and moving platform entities from grid
+    flyersRef.current = []
+    movingPlatformsRef.current = []
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        const t = grid[r][c]
+        if (t === 'F') {
+          flyersRef.current.push({
+            x: c * TILE,
+            centerY: r * TILE,
+            amplitude: TILE * 1.4,
+            speed: 0.04 + (c % 3) * 0.012,
+          })
+        }
+        if (t === 'M') {
+          movingPlatformsRef.current.push({
+            baseX: c * TILE,
+            baseY: r * TILE + TILE * 0.6,
+            range: TILE * 2.5,
+            speed: 0.025 + (r % 2) * 0.01,
+            w: TILE, h: TILE * 0.4,
+          })
+        }
+      }
+    }
+
     const g = {
       px: spawnX, py: spawnY,
       pvx: 0, pvy: 0,
@@ -329,6 +533,24 @@ export default function Play() {
 
     const initialCoinCount = initialCoins.size
     function syncScore() { setScore(initialCoinCount - g.coins.size) }
+
+    // Reset and init telemetry for this level run
+    telemetryRef.current = {
+      deaths: 0, deathPoints: [], jumps: 0,
+      coinsCollected: 0, coinsTotal: initialCoinCount,
+      reachedGoal: false, idleTime: 0,
+      pathSampled: [], startTime: Date.now(), endTime: null,
+    }
+
+    // Sample player path every 500ms
+    const pathInterval = setInterval(() => {
+      if (g.state === 'playing') {
+        telemetryRef.current.pathSampled.push({
+          col: Math.round(g.px / TILE),
+          row: Math.round(g.py / TILE),
+        })
+      }
+    }, 500)
 
     // Record a simulate-mode death and trigger K2 re-analysis every 2 deaths
     function recordSimDeath(col, row) {
@@ -585,6 +807,15 @@ export default function Play() {
     function physicsUpdate(dt) {
       if (editModeRef.current) return
       if (g.state !== 'playing') return
+
+      // Update crumble timers
+      for (const [key, cs] of crumbleRef.current.entries()) {
+        if (cs.fallen) continue
+        cs.timer += dt * 1000
+        if (cs.timer > 600 && !cs.falling) cs.falling = true
+        if (cs.timer > 1200) cs.fallen = true
+      }
+
       // AI autopilot overrides keyboard input
       if (simulateModeRef.current) {
         processAICommands(dt)
@@ -599,6 +830,10 @@ export default function Play() {
       const ph = TILE * 0.9
       const goLeft  = !!(g.keys['ArrowLeft']  || g.keys['KeyA'])
       const goRight = !!(g.keys['ArrowRight'] || g.keys['KeyD'])
+      if (goLeft || goRight) g.lastInputTime = performance.now()
+      else if (performance.now() - (g.lastInputTime || g.startTime) > 1500) {
+        telemetryRef.current.idleTime += dt
+      }
 
       const hSpeed = g.onGround ? moveSpeed : moveSpeed / Math.SQRT2
       if (goLeft)  g.pvx = -hSpeed
@@ -614,6 +849,7 @@ export default function Play() {
         g.onGround = false
         g.coyoteTimer = 0
         g.jumpBufferTimer = 0
+        telemetryRef.current.jumps++
       }
 
       g.pvy = Math.min(g.pvy + gravity * dt, maxFall)
@@ -642,6 +878,10 @@ export default function Play() {
 
       if (wasOnGround && !g.onGround && g.pvy >= 0) g.coyoteTimer = COYOTE_MS
       if (g.py > levelH + 200) {
+        telemetryRef.current.deaths++
+        telemetryRef.current.deathPoints.push({ col: Math.round(g.px / TILE), row: rows - 1 })
+        shakeRef.current = 8
+        setDeathCount(d => d + 1)
         if (simulateModeRef.current) recordSimDeath(Math.round(g.px / TILE), Math.round((g.py - 200) / TILE))
         g.state = 'dead'; setTimeout(respawn, 400); return
       }
@@ -654,10 +894,16 @@ export default function Play() {
         for (let c = left2; c <= right2; c++) {
           const t = getTile(grid, r, c)
           if (t === 'S') {
+            telemetryRef.current.deaths++
+            telemetryRef.current.deathPoints.push({ col: c, row: r })
+            shakeRef.current = 8
+            setDeathCount(d => d + 1)
             if (simulateModeRef.current) recordSimDeath(c, r)
             g.state = 'dead'; setTimeout(respawn, 400); return
           }
           if (t === 'G') {
+            telemetryRef.current.reachedGoal = true
+            telemetryRef.current.endTime = Date.now()
             g.state = 'win'
             setGameWon(true)
             setWinTime((performance.now() - g.startTime) / 1000)
@@ -665,9 +911,114 @@ export default function Play() {
           }
           const coinKey = `${r},${c}`
           if (t === 'C' && g.coins.has(coinKey)) {
+            telemetryRef.current.coinsCollected++
             g.coins.delete(coinKey)
             g.particles.push(...makeParticles(c * TILE + TILE / 2, r * TILE + TILE / 2))
             syncScore()
+          }
+        }
+      }
+
+      // Flyer collision - sine-wave enemies kill on contact, not stompable
+      for (const f of flyersRef.current) {
+        const fy = f.centerY + Math.sin(g.frame * f.speed) * f.amplitude
+        const fr = fy - TILE / 2
+        const fb = fy + TILE / 2
+        const fl = f.x
+        const ff = f.x + TILE
+        if (g.px < ff && g.px + pw > fl && g.py < fb && g.py + ph > fr) {
+          telemetryRef.current.deaths++
+          telemetryRef.current.deathPoints.push({ col: Math.round(f.x / TILE), row: Math.round(fy / TILE) })
+          shakeRef.current = 8
+          setDeathCount(d => d + 1)
+          if (simulateModeRef.current) recordSimDeath(Math.round(f.x / TILE), Math.round(fy / TILE))
+          g.state = 'dead'; setTimeout(respawn, 400); return
+        }
+      }
+
+      // Moving platform collision - player inherits platform horizontal velocity
+      for (const mp of movingPlatformsRef.current) {
+        const prevOffX = Math.sin((g.frame - 1) * mp.speed) * mp.range
+        const currOffX = Math.sin(g.frame * mp.speed) * mp.range
+        const mpX = mp.baseX + currOffX
+        const mpY = mp.baseY
+        const playerBottom = g.py + ph
+        const playerLeft   = g.px
+        const playerRight  = g.px + pw
+        if (
+          playerRight > mpX && playerLeft < mpX + mp.w &&
+          playerBottom >= mpY && playerBottom <= mpY + mp.h + 4 &&
+          g.pvy >= 0
+        ) {
+          g.py = mpY - ph
+          g.pvy = 0
+          g.onGround = true
+          // Inherit platform velocity
+          const platformVx = (currOffX - prevOffX) * 60
+          g.pvx += platformVx * dt
+        }
+      }
+
+      // Update walker patrol movement
+      for (const [key, w] of walkersRef.current.entries()) {
+        if (!w.alive) continue
+        w.x += w.vx * dt
+        const wCol = Math.round(w.x / TILE)
+        // Reverse at platform edge or solid wall ahead
+        const nextCol = wCol + (w.vx > 0 ? 1 : -1)
+        const floorRow = w.row + 1
+        const wallTile = getTile(grid, w.row, nextCol)
+        const floorAhead = isSolid(grid, floorRow, nextCol)
+        if ((wallTile && wallTile !== '' && isSolid(grid, w.row, nextCol)) || !floorAhead || wCol < w.minCol || wCol > w.maxCol) {
+          w.vx = -w.vx
+        }
+        // Kill player if overlapping walker (world-space AABB, hitbox = 70% centered)
+        const walkerHW = TILE * 0.35
+        const walkerCX = w.x + TILE / 2
+        const walkerCY = w.row * TILE + TILE / 2
+        const playerCX = g.px + pw * 0.5
+        const playerCY = g.py + ph * 0.5
+        if (Math.abs(playerCX - walkerCX) < walkerHW + pw * 0.5 &&
+            Math.abs(playerCY - walkerCY) < TILE * 0.4 + ph * 0.5) {
+          telemetryRef.current.deaths++
+          telemetryRef.current.deathPoints.push({ col: wCol, row: w.row })
+          shakeRef.current = 8
+          if (simulateModeRef.current) recordSimDeath(wCol, w.row)
+          g.state = 'dead'; setTimeout(respawn, 400); return
+        }
+      }
+
+      // Saw (Z): not solid, use expanded AABB (+1 row) to catch floor-level saws
+      const sawTop    = Math.floor(g.py / TILE)
+      const sawBottom = Math.floor((g.py + ph) / TILE)
+      for (let r = sawTop; r <= sawBottom; r++) {
+        for (let c = left2; c <= right2; c++) {
+          if (getTile(grid, r, c) === 'Z') {
+            telemetryRef.current.deaths++
+            telemetryRef.current.deathPoints.push({ col: c, row: r })
+            shakeRef.current = 8
+            setDeathCount(d => d + 1)
+            if (simulateModeRef.current) recordSimDeath(c, r)
+            g.state = 'dead'; setTimeout(respawn, 400); return
+          }
+        }
+      }
+
+      // Spring (J) and Crumble (B): solid tiles — check floor row directly
+      if (g.onGround) {
+        const floorRow = Math.floor((g.py + ph) / TILE)
+        for (let c = left2; c <= right2; c++) {
+          const ft = getTile(grid, floorRow, c)
+          if (ft === 'J') {
+            g.pvy = -(physRef.current.jumpStrength * 2.2)
+            g.onGround = false
+            break
+          }
+          if (ft === 'B') {
+            const key = `${floorRow},${c}`
+            if (!crumbleRef.current.has(key)) {
+              crumbleRef.current.set(key, { timer: 0, falling: false })
+            }
           }
         }
       }
@@ -687,8 +1038,19 @@ export default function Play() {
       camY = Math.max(0, Math.min(camY, levelH - gameH))
       camRef.current = { x: camX, y: camY }
 
+      // Screen shake
+      let shakeX = 0, shakeY = 0
+      if (shakeRef.current > 0) {
+        shakeRef.current--
+        const mag = shakeRef.current * 1.2
+        shakeX = (Math.random() - 0.5) * mag
+        shakeY = (Math.random() - 0.5) * mag
+        ctx.save()
+        ctx.translate(shakeX, shakeY)
+      }
+
       // Background
-      ctx.fillStyle = '#1e1b2e'
+      ctx.fillStyle = isHardModeRef.current ? '#0a0510' : '#1e1b2e'
       ctx.fillRect(0, 0, W, H)
 
       // Label margin backgrounds
@@ -730,6 +1092,16 @@ export default function Play() {
           else if (t === 'S')                                drawSpike(ctx, x, y, TILE)
           else if (t === 'G')                                drawGoal(ctx, x, y, TILE, g.frame)
           else if (t === 'C' && g.coins.has(`${r},${c}`))   drawCoin(ctx, x, y, TILE, g.frame)
+          else if (t === 'W') { /* walkers drawn from walkersRef below */ }
+          else if (t === 'F') { /* flyers drawn from flyersRef below */ }
+          else if (t === 'M') { /* moving platforms drawn from movingPlatformsRef below */ }
+          else if (t === 'Z')                                drawSaw(ctx, x, y, TILE, g.frame)
+          else if (t === 'J')                                drawSpring(ctx, x, y, TILE)
+          else if (t === 'B') {
+            const cs = crumbleRef.current.get(`${r},${c}`)
+            if (cs?.fallen) { /* skip — tile is gone */ }
+            else drawCrumble(ctx, x, y, TILE, cs ? cs.timer / 1200 : 0)
+          }
         }
       }
 
@@ -752,6 +1124,29 @@ export default function Play() {
         ctx.textBaseline = 'middle'
         ctx.fillText('?', sx, sy)
         ctx.restore()
+      }
+
+      // Walkers (drawn at their actual patrol positions)
+      for (const [, w] of walkersRef.current.entries()) {
+        if (!w.alive) continue
+        const wx = LABEL_LEFT + w.x - camX
+        const wy = LABEL_TOP  + w.row * TILE - camY
+        drawWalker(ctx, wx, wy, TILE, g.frame)
+      }
+
+      // Flyers (sine-wave vertical oscillation)
+      for (const f of flyersRef.current) {
+        const fy = LABEL_TOP + f.centerY + Math.sin(g.frame * f.speed) * f.amplitude - camY
+        const fx = LABEL_LEFT + f.x - camX
+        drawFlyer(ctx, fx, fy - TILE / 2, TILE, g.frame)
+      }
+
+      // Moving platforms (horizontal oscillation)
+      for (const mp of movingPlatformsRef.current) {
+        const offX = Math.sin(g.frame * mp.speed) * mp.range
+        const mx = LABEL_LEFT + mp.baseX - camX
+        const my = LABEL_TOP  + mp.baseY - camY
+        drawMovingPlatform(ctx, mx, my, TILE, offX)
       }
 
       // Edit mode hover highlight
@@ -983,6 +1378,20 @@ export default function Play() {
 
       ctx.restore() // end clip
 
+      // Hard Mode badge
+      if (isHardModeRef.current) {
+        ctx.save()
+        ctx.font = 'bold 11px monospace'
+        ctx.textAlign = 'right'
+        ctx.textBaseline = 'top'
+        ctx.fillStyle = '#ef4444'
+        ctx.shadowColor = '#ef4444'
+        ctx.shadowBlur = 10
+        ctx.fillText('⚡ HARD MODE', W - 8, LABEL_TOP + 4)
+        ctx.shadowBlur = 0
+        ctx.restore()
+      }
+
       // Level border
       ctx.strokeStyle = 'rgba(122,162,247,0.25)'
       ctx.lineWidth = 1
@@ -1011,6 +1420,9 @@ export default function Play() {
         ctx.fillText(String(r), LABEL_LEFT - 3, y)
       }
 
+      // Restore shake transform
+      if (shakeX !== 0 || shakeY !== 0) ctx.restore()
+
       g.frame++
     }
 
@@ -1025,6 +1437,7 @@ export default function Play() {
     rafRef.current = requestAnimationFrame(loop)
     return () => {
       cancelAnimationFrame(rafRef.current)
+      clearInterval(pathInterval)
       window.removeEventListener('keydown', onKeyDown)
       window.removeEventListener('keyup', onKeyUp)
     }
@@ -1196,6 +1609,90 @@ export default function Play() {
     setVerifyTrigger(t => t + 1)
   }, [phys])
 
+  const handleRestartOriginal = useCallback(() => {
+    const orig = originalLevelDataRef.current
+    if (!orig) return
+    setIsHardMode(false)
+    isHardModeRef.current = false
+    setHardModeData(null)
+    setShowWhyCard(false)
+    setGameWon(false)
+    setRageQuit(false)
+    setDeathCount(0)
+    setHardDifficulty(null)
+    crumbleRef.current.clear()
+    walkersRef.current.clear()
+    flyersRef.current = []
+    telemetryRef.current = { deaths: 0, deathPoints: [], jumps: 0, coinsCollected: 0, coinsTotal: 0, reachedGoal: false, idleTime: 0, pathSampled: [], startTime: Date.now(), endTime: null }
+    setLevelData({ ...orig })
+  }, [])
+
+  const handleTryHardMode = useCallback(async (difficulty = 'medium') => {
+    setHardDifficulty(difficulty)
+    setHardModeLoading(true)
+    setHardModeError(null)
+    const sourceLevel = originalLevelDataRef.current || levelData
+    try {
+      const res = await fetch('/api/levels/hard-mode', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          grid: sourceLevel.data,
+          width: sourceLevel.width,
+          height: sourceLevel.height,
+          playerStart: sourceLevel.playerStart,
+          goal: sourceLevel.goal,
+          deathPositions: simDeathsRef.current,
+          telemetry: telemetryRef.current,
+          difficulty,
+        }),
+      })
+      if (!res.ok) {
+        const errBody = await res.json().catch(() => ({}))
+        throw new Error(errBody.error || `Server error ${res.status}`)
+      }
+      const data = await res.json()
+      setHardModeData(data)
+      setIsHardMode(true)
+      isHardModeRef.current = true
+      setGameWon(false)
+      setShowWhyCard(true)
+      // Reset crumble state
+      crumbleRef.current.clear()
+      // Initialize walkers from new grid
+      walkersRef.current.clear()
+      data.level.data.forEach((row, r) => row.forEach((t, c) => {
+        if (t === 'W') {
+          // Find platform extent for patrol bounds
+          let minCol = c, maxCol = c
+          while (minCol > 0 && isSolid(data.level.data, r + 1, minCol - 1)) minCol--
+          while (maxCol < (data.level.data[r]?.length ?? 0) - 1 && isSolid(data.level.data, r + 1, maxCol + 1)) maxCol++
+          walkersRef.current.set(`${r},${c}`, {
+            row: r, col: c, x: c * TILE_SIZE, vx: 60, minCol, maxCol, alive: true
+          })
+        }
+      }))
+      // Update level data with hard mode level
+      setLevelData(prev => ({ ...prev, data: data.level.data }))
+      // Respawn player
+      if (gameRef.current) {
+        gameRef.current.state = 'playing'
+        gameRef.current.px = gameRef.current.spawnX
+        gameRef.current.py = gameRef.current.spawnY
+        gameRef.current.pvx = 0
+        gameRef.current.pvy = 0
+        // Re-initialize coins for new grid
+        const newCoins = new Set()
+        data.level.data.forEach((row, r) => row.forEach((t, c) => { if (t === 'C') newCoins.add(`${r},${c}`) }))
+        gameRef.current.coins = newCoins
+      }
+    } catch (err) {
+      setHardModeError(err.message)
+    } finally {
+      setHardModeLoading(false)
+    }
+  }, [levelData])
+
   const handleCanvasMouseDown = useCallback((e) => {
     if (!editModeRef.current) return
     e.preventDefault()
@@ -1283,7 +1780,7 @@ export default function Play() {
   }
 
   return (
-    <div className="flex h-dvh bg-[#0f0e1a] overflow-hidden">
+    <div className={`flex h-dvh overflow-hidden transition-colors duration-700 ${isHardMode ? 'hard-theme bg-[#0a0004]' : 'easy-theme bg-[#0f0e1a]'}`}>
 
       {/* ── Physics / Editor Sidebar ── */}
       <div className={`flex-shrink-0 flex flex-col overflow-hidden transition-all duration-300 ${physPanelOpen ? 'w-52' : 'w-0'}`}>
@@ -1438,6 +1935,14 @@ export default function Play() {
           >
             {isDevMode ? '> DEV: ON_' : '> DEV'}
           </button>
+          {isHardMode && hardModeData && (
+            <button
+              onClick={() => setShowWhyCard(w => !w)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-500/20 text-red-400 hover:bg-red-500/30 transition-colors text-xs font-bold border border-red-500/30"
+            >
+              ⚡ Why Hard?
+            </button>
+          )}
           <button onClick={handleShare} aria-label="Share this level"
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/10 text-stone-300 hover:bg-white/20 hover:text-white transition-colors text-sm font-medium">
             <Share2 size={14} /> Share
@@ -1489,6 +1994,73 @@ export default function Play() {
               )}
             </AnimatePresence>
 
+            {/* Rage-quit prompt after 5 deaths (easy mode only) */}
+            <AnimatePresence>
+              {!isHardMode && !gameWon && !rageQuit && deathCount >= 5 && (
+                <motion.div
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0 }}
+                  className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 flex items-center gap-3
+                             bg-[#1a0a0a]/90 border border-red-500/40 rounded-2xl px-4 py-3 shadow-xl backdrop-blur-sm"
+                >
+                  <span className="text-stone-400 text-xs">Died {deathCount}x...</span>
+                  <button
+                    onClick={() => { telemetryRef.current.endTime = Date.now(); setRageQuit(true); }}
+                    className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl text-xs transition-colors"
+                  >
+                    Give Up?
+                  </button>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            {/* Rage-quit overlay (same as win but with different framing) */}
+            <AnimatePresence>
+              {rageQuit && !isHardMode && (
+                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                  className="absolute inset-0 flex items-center justify-center bg-black/60 backdrop-blur-sm z-30">
+                  <motion.div
+                    initial={{ scale: 0.8, y: 20 }} animate={{ scale: 1, y: 0 }}
+                    transition={{ type: 'spring', stiffness: 250, damping: 20 }}
+                    className="bg-[#1e1b2e] border border-white/20 rounded-3xl p-8 text-center shadow-2xl max-w-sm mx-4">
+                    <div className="text-5xl mb-3">😤</div>
+                    <h2 className="text-2xl font-black text-white mb-1">Alright, you tried.</h2>
+                    <p className="text-stone-400 text-sm mb-4">{deathCount} deaths. The AI saw everything.</p>
+                    <p className="text-stone-500 text-xs mb-1">Jumps: {telemetryRef.current.jumps}</p>
+                    <p className="text-stone-500 text-xs mb-4">Coins: {telemetryRef.current.coinsCollected} / {telemetryRef.current.coinsTotal}</p>
+                    <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/30 mb-4">
+                      <p className="text-red-300 text-xs font-bold uppercase tracking-widest mb-1">⚡ Let the AI remix your pain</p>
+                      <p className="text-stone-400 text-xs mb-3">It tracked every death. Now it will use that against you.</p>
+                      {hardModeLoading ? (
+                        <div className="flex items-center justify-center gap-2 py-2 text-orange-400 text-sm font-bold">
+                          <span className="animate-spin">⚙</span> AI is studying your deaths...
+                        </div>
+                      ) : (
+                        <div className="flex gap-2">
+                          {[['😅','Light','light','bg-yellow-600 hover:bg-yellow-700'],
+                            ['💀','Brutal','medium','bg-orange-600 hover:bg-orange-700'],
+                            ['☠️','Nightmare','brutal','bg-red-700 hover:bg-red-800']].map(([icon, label, diff, cls]) => (
+                            <button key={diff} onClick={() => handleTryHardMode(diff)}
+                              className={`flex-1 py-2 ${cls} text-white font-black rounded-xl text-xs transition-colors flex flex-col items-center gap-0.5`}>
+                              <span>{icon}</span><span>{label}</span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                      {hardModeError && <p className="text-red-400 text-xs mt-1">{hardModeError}</p>}
+                    </div>
+                    <button
+                      onClick={() => { setRageQuit(false); setDeathCount(0); }}
+                      className="text-stone-500 hover:text-stone-300 text-sm transition-colors"
+                    >
+                      Keep trying
+                    </button>
+                  </motion.div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
             {/* Win overlay */}
             <AnimatePresence>
               {gameWon && (
@@ -1498,14 +2070,74 @@ export default function Play() {
                     initial={{ scale: 0.7, y: 30 }} animate={{ scale: 1, y: 0 }}
                     transition={{ type: 'spring', stiffness: 250, damping: 20 }}
                     className="bg-[#1e1b2e] border border-white/20 rounded-3xl p-10 text-center shadow-2xl max-w-sm mx-4">
-                    <div className="text-6xl mb-4">🎉</div>
-                    <h2 className="text-3xl font-black text-white mb-2">You Win!</h2>
+                    <div className="text-6xl mb-4">{isHardMode ? '🔥' : '🎉'}</div>
+                    <h2 className={`text-3xl font-black mb-2 ${isHardMode ? 'text-red-400' : 'text-white'}`}>
+                      {isHardMode ? "You beat the AI's trap." : 'You Win!'}
+                    </h2>
+                    {isHardMode && hardModeData && (
+                      <div className="inline-flex items-center gap-1.5 bg-red-500/20 border border-red-500/40 rounded-full px-3 py-1 mb-3">
+                        <span className="text-red-400 text-xs font-bold">Difficulty</span>
+                        <span className="text-white text-sm font-black">{hardModeData.difficulty_estimate}/10</span>
+                      </div>
+                    )}
                     <p className="text-stone-400 mb-1">Time: <span className="text-white font-bold">{winTime.toFixed(1)}s</span></p>
-                    {score > 0 && <p className="text-amber-400 mb-6">Coins: <span className="font-bold">{score}</span></p>}
-                    <div className="flex flex-col gap-3 mt-6">
+                    <p className="text-stone-500 text-xs mb-1">Deaths: {telemetryRef.current.deaths} · Jumps: {telemetryRef.current.jumps}</p>
+                    {score > 0 && <p className="text-amber-400 mb-4">Coins: <span className="font-bold">{score}</span></p>}
+
+                    {!isHardMode && (
+                      <div className="mt-4 mb-2 p-3 rounded-xl bg-red-500/10 border border-red-500/30">
+                        <p className="text-red-300 text-xs font-bold uppercase tracking-widest mb-1">⚡ Pick Your Poison</p>
+                        <p className="text-stone-400 text-xs mb-3">AI remixes this level using your death data. Choose how evil:</p>
+                        {hardModeLoading ? (
+                          <div className="flex items-center justify-center gap-2 py-2 text-orange-400 text-sm font-bold">
+                            <span className="animate-spin">⚙</span> AI is studying your deaths...
+                          </div>
+                        ) : (
+                          <div className="flex gap-2">
+                            {[['😅','Light','light','bg-yellow-600 hover:bg-yellow-700'],
+                              ['💀','Brutal','medium','bg-orange-600 hover:bg-orange-700'],
+                              ['☠️','Nightmare','brutal','bg-red-700 hover:bg-red-800']].map(([icon, label, diff, cls]) => (
+                              <button key={diff} onClick={() => handleTryHardMode(diff)}
+                                className={`flex-1 py-2 ${cls} text-white font-black rounded-xl text-xs transition-colors flex flex-col items-center gap-0.5`}>
+                                <span>{icon}</span><span>{label}</span>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                        {hardModeError && <p className="text-red-400 text-xs mt-2">{hardModeError}</p>}
+                      </div>
+                    )}
+                    {isHardMode && (
+                      <div className="mt-4 mb-2 p-3 rounded-xl bg-red-500/10 border border-red-500/30">
+                        <p className="text-red-300 text-xs font-bold uppercase tracking-widest mb-2">⚡ Try A Different Remix</p>
+                        {hardModeLoading ? (
+                          <div className="flex items-center justify-center gap-2 py-2 text-orange-400 text-sm font-bold">
+                            <span className="animate-spin">⚙</span> AI is studying your deaths...
+                          </div>
+                        ) : (
+                          <div className="flex gap-2">
+                            {[['😅','Light','light','bg-yellow-600 hover:bg-yellow-700'],
+                              ['💀','Brutal','medium','bg-orange-600 hover:bg-orange-700'],
+                              ['☠️','Nightmare','brutal','bg-red-700 hover:bg-red-800']].map(([icon, label, diff, cls]) => (
+                              <button key={diff} onClick={() => handleTryHardMode(diff)}
+                                className={`flex-1 py-2 ${cls} text-white font-black rounded-xl text-xs transition-colors flex flex-col items-center gap-0.5`}>
+                                <span>{icon}</span><span>{label}</span>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                        {hardModeError && <p className="text-red-400 text-xs mt-2">{hardModeError}</p>}
+                      </div>
+                    )}
+
+                    <div className="flex flex-col gap-3 mt-4">
                       <button
                         onClick={() => {
                           setGameWon(false)
+                          setRageQuit(false)
+                          setDeathCount(0)
+                          crumbleRef.current.clear()
+                          telemetryRef.current = { deaths: 0, deathPoints: [], jumps: 0, coinsCollected: 0, coinsTotal: telemetryRef.current.coinsTotal, reachedGoal: false, idleTime: 0, pathSampled: [], startTime: Date.now(), endTime: null }
                           if (gameRef.current) {
                             gameRef.current.state = 'playing'
                             gameRef.current.px = gameRef.current.spawnX
@@ -1517,6 +2149,12 @@ export default function Play() {
                         className="px-6 py-3 bg-orange-500 hover:bg-orange-600 text-white font-bold rounded-2xl transition-colors text-lg">
                         Play Again
                       </button>
+                      {isHardMode && (
+                        <button onClick={handleRestartOriginal}
+                          className="px-6 py-3 bg-stone-700 hover:bg-stone-600 text-white font-bold rounded-2xl transition-colors text-sm">
+                          ↩ Back to Original Level
+                        </button>
+                      )}
                       <button onClick={handleShare}
                         className="px-6 py-3 bg-white/10 hover:bg-white/20 text-white font-semibold rounded-2xl transition-colors flex items-center justify-center gap-2">
                         <Share2 size={16} /> Share This Level
@@ -1527,6 +2165,71 @@ export default function Play() {
                       </button>
                     </div>
                   </motion.div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            {/* Why It's Hard explainer card */}
+            <AnimatePresence>
+              {showWhyCard && hardModeData?.changes && (
+                <motion.div
+                  initial={{ opacity: 0, x: 40 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: 40 }}
+                  className="absolute top-4 right-4 w-72 bg-[#0d0510] border border-red-500/40 rounded-2xl p-4 shadow-2xl z-30 overflow-y-auto max-h-[calc(100%-2rem)]"
+                >
+                  <div className="flex items-start justify-between mb-3">
+                    <div>
+                      <p className="text-[10px] font-bold text-red-400 uppercase tracking-widest mb-1">⚡ Why It's Harder</p>
+                      <div className="flex items-center gap-2">
+                        <div className="w-full bg-stone-800 rounded-full h-1.5 w-28">
+                          <div
+                            className="bg-gradient-to-r from-orange-500 to-red-500 h-1.5 rounded-full transition-all"
+                            style={{ width: `${(hardModeData.difficulty_estimate / 10) * 100}%` }}
+                          />
+                        </div>
+                        <span className="text-red-400 text-xs font-black">{hardModeData.difficulty_estimate}/10</span>
+                      </div>
+                    </div>
+                    <button onClick={() => setShowWhyCard(false)} className="text-stone-600 hover:text-stone-400 text-xs mt-1">✕</button>
+                  </div>
+
+                  <p className="text-[10px] text-stone-500 mb-3 italic">
+                    Based on your {telemetryRef.current.deaths} death{telemetryRef.current.deaths !== 1 ? 's' : ''} and {telemetryRef.current.jumps} jumps
+                  </p>
+
+                  <div className="space-y-2">
+                    {hardModeData.changes.slice(0, 6).map((change, i) => {
+                      const icon = change.type === 'enemy_walker' || change.type === 'walker' ? '👾'
+                                 : change.type === 'enemy_flyer'  || change.type === 'flyer'  ? '🦇'
+                                 : change.type === 'saw'          || change.type === 'Z'      ? '⚙'
+                                 : change.type === 'crumble'      || change.type === 'B'      ? '💥'
+                                 : change.type === 'spring'       || change.type === 'J'      ? '🌀'
+                                 : change.type === 'spike'        || change.type === 'S'      ? '🔺'
+                                 : '⚡'
+                      return (
+                        <div key={change.id || i} className="flex gap-2 p-2 rounded-lg bg-white/5">
+                          <span className="text-sm flex-shrink-0">{icon}</span>
+                          <p className="text-stone-300 text-[11px] leading-relaxed">{change.description}</p>
+                        </div>
+                      )
+                    })}
+                  </div>
+                  {hardModeData.changes.length > 6 && (
+                    <p className="text-stone-600 text-[10px] mt-2">+{hardModeData.changes.length - 6} more changes</p>
+                  )}
+
+                  {/* Legend */}
+                  <div className="mt-3 pt-3 border-t border-white/10">
+                    <p className="text-[10px] font-bold text-stone-500 uppercase tracking-widest mb-2">Legend</p>
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2"><span className="text-sm">👾</span><span className="text-[11px] text-stone-400"><span className="text-white font-bold">Walker</span> — patrols back and forth, deadly on touch</span></div>
+                      <div className="flex items-center gap-2"><span className="text-sm">🦇</span><span className="text-[11px] text-stone-400"><span className="text-white font-bold">Flyer</span> — drifts up and down, cannot be stomped</span></div>
+                      <div className="flex items-center gap-2"><span className="text-sm">⚙</span><span className="text-[11px] text-stone-400"><span className="text-white font-bold">Saw</span> — instant death on contact</span></div>
+                      <div className="flex items-center gap-2"><span className="text-sm">💥</span><span className="text-[11px] text-stone-400"><span className="text-white font-bold">Crumble</span> — falls 0.6s after you step on it</span></div>
+                      <div className="flex items-center gap-2"><span className="text-sm">🌀</span><span className="text-[11px] text-stone-400"><span className="text-white font-bold">Spring</span> — launches you super high</span></div>
+                    </div>
+                  </div>
                 </motion.div>
               )}
             </AnimatePresence>

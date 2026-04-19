@@ -29,6 +29,35 @@ canvas {
   border-radius: 4px;
 }
 
+/* Hard / Easy mode theme tokens */
+.easy-theme {
+  --theme-bg: #1e1b2e;
+  --theme-accent: #f97316;
+  --theme-accent-glow: rgba(249, 115, 22, 0.3);
+  --theme-border: rgba(255,255,255,0.12);
+}
+
+.hard-theme {
+  --theme-bg: #0a0004;
+  --theme-accent: #ef4444;
+  --theme-accent-glow: rgba(239, 68, 68, 0.35);
+  --theme-border: rgba(239, 68, 68, 0.25);
+}
+
+.hard-theme canvas {
+  box-shadow: 0 0 40px rgba(239, 68, 68, 0.15);
+}
+
+/* Hard mode red scanline pulse on the canvas wrapper */
+@keyframes hard-pulse {
+  0%, 100% { border-color: rgba(239, 68, 68, 0.25); }
+  50%       { border-color: rgba(239, 68, 68, 0.55); }
+}
+.hard-theme .canvas-border {
+  animation: hard-pulse 2s ease-in-out infinite;
+  border-color: rgba(239, 68, 68, 0.25);
+}
+
 /* Aurora background animation */
 @keyframes aurora-move {
   0%   { transform: translateX(0)   translateY(0)   rotate(0deg); }
