@@ -6,6 +6,7 @@ const fs      = require('fs');
 const { processLevelImage }       = require('./src/levelConverter');
 const { verifyLevelSolvability }  = require('./src/verificationEngine');
 const { generateHardMode }        = require('./src/hardModeEngine');
+const hardModeAgent               = require('./src/agents/hardModeAgent');
 
 const app    = express();
 const upload = multer({ storage: multer.memoryStorage() });
@@ -63,17 +64,33 @@ app.post('/verify', async (req, res) => {
   res.end();
 });
 
-// POST /api/levels/hard-mode — generate hard-mode remix using AI/deterministic
+// POST /api/levels/hard-mode — generate hard-mode remix via Kimi K2 agent, deterministic fallback
 app.post('/api/levels/hard-mode', async (req, res) => {
   const { grid, width, height, playerStart, goal, deathPositions, telemetry } = req.body;
   if (!Array.isArray(grid) || grid.length === 0) {
     return res.status(400).json({ error: 'No grid provided.' });
   }
+
+  const levelInput = { data: grid, width: width || (grid[0]?.length ?? 0), height: height || grid.length, playerStart: playerStart || null, goal: goal || null };
+  const tel = telemetry || {};
+
+  // Try Kimi K2 agent first
+  const hasKey = !!(process.env.LLM_API_KEY || process.env.K2_API_KEY);
+  if (hasKey) {
+    try {
+      const result = await hardModeAgent.invoke({ level: levelInput, telemetry: tel });
+      return res.json(result);
+    } catch (err) {
+      console.warn('[hard-mode] Agent failed, falling back to deterministic:', err.message);
+    }
+  }
+
+  // Deterministic fallback
   try {
-    const result = await generateHardMode({ grid, width, height, playerStart, goal, deathPositions: deathPositions || [], telemetry: telemetry || {} });
+    const result = await generateHardMode({ grid, width, height, playerStart, goal, deathPositions: deathPositions || [], telemetry: tel });
     res.json(result);
   } catch (err) {
-    console.error('Hard mode error:', err.message);
+    console.error('[hard-mode] Deterministic fallback also failed:', err.message);
     res.status(500).json({ error: err.message });
   }
 });
