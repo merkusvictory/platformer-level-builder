@@ -66,19 +66,20 @@ app.post('/verify', async (req, res) => {
 
 // POST /api/levels/hard-mode — generate hard-mode remix via Kimi K2 agent, deterministic fallback
 app.post('/api/levels/hard-mode', async (req, res) => {
-  const { grid, width, height, playerStart, goal, deathPositions, telemetry } = req.body;
+  const { grid, width, height, playerStart, goal, deathPositions, telemetry, difficulty } = req.body;
   if (!Array.isArray(grid) || grid.length === 0) {
     return res.status(400).json({ error: 'No grid provided.' });
   }
 
   const levelInput = { data: grid, width: width || (grid[0]?.length ?? 0), height: height || grid.length, playerStart: playerStart || null, goal: goal || null };
   const tel = telemetry || {};
+  const diff = difficulty || 'medium';
 
   // Try Kimi K2 agent first
   const hasKey = !!(process.env.LLM_API_KEY || process.env.K2_API_KEY);
   if (hasKey) {
     try {
-      const result = await hardModeAgent.invoke({ level: levelInput, telemetry: tel });
+      const result = await hardModeAgent.invoke({ level: levelInput, telemetry: tel, difficulty: diff });
       return res.json(result);
     } catch (err) {
       console.warn('[hard-mode] Agent failed, falling back to deterministic:', err.message);

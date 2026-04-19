@@ -12,8 +12,9 @@ const K2_MODEL    = process.env.K2_MODEL        || 'MBZUAI-IFM/K2-Think-v2';
 function buildPrompt(grid, physicsParams, deathPositions = []) {
   const { gravity, jumpStrength, moveSpeed, tileSize } = physicsParams;
 
-  const surfaces = [], spikes = [];
+  const surfaces = [], spikes = [], saws = [], walkers = [], flyers = [], springs = [], crumbles = [];
   let playerPos = null, goalPos = null;
+  const isSolidCell = c => c === 1 || c === 'T' || c === 'B';
 
   for (let r = 0; r < grid.length; r++) {
     for (let c = 0; c < grid[0].length; c++) {
@@ -21,9 +22,14 @@ function buildPrompt(grid, physicsParams, deathPositions = []) {
       if      (cell === 'P') playerPos = { col: c, row: r };
       else if (cell === 'G') goalPos   = { col: c, row: r };
       else if (cell === 'S') spikes.push({ col: c, row: r });
-      else if (cell === 1 || cell === 'T') {
+      else if (cell === 'Z') saws.push({ col: c, row: r });
+      else if (cell === 'W') walkers.push({ col: c, row: r });
+      else if (cell === 'F') flyers.push({ col: c, row: r });
+      else if (cell === 'J') springs.push({ col: c, row: r });
+      else if (cell === 'B') crumbles.push({ col: c, row: r });
+      if (isSolidCell(cell)) {
         const above = r === 0 ? 1 : grid[r - 1][c];
-        if (above !== 1 && above !== 'T') surfaces.push({ col: c, row: r });
+        if (!isSolidCell(above)) surfaces.push({ col: c, row: r });
       }
     }
   }
@@ -44,9 +50,13 @@ function buildPrompt(grid, physicsParams, deathPositions = []) {
     }
   }
 
-  const spikeList = spikes.length
-    ? spikes.map(s => `(col ${s.col}, row ${s.row})`).join(', ')
-    : 'none';
+  const fmt = arr => arr.length ? arr.map(s => `(col ${s.col}, row ${s.row})`).join(', ') : 'none';
+  const spikeList   = fmt(spikes);
+  const sawList     = fmt(saws);
+  const walkerList  = fmt(walkers);
+  const flyerList   = fmt(flyers);
+  const springList  = fmt(springs);
+  const crumbleList = fmt(crumbles);
 
   // --- Physics constants ---
   const hAirSpeed      = moveSpeed / Math.SQRT2;
@@ -112,7 +122,7 @@ function buildPrompt(grid, physicsParams, deathPositions = []) {
   // Check if pos has a solid tile directly below (player lands there on spawn)
   function isGrounded(pos) {
     const below = tileAt(pos.row + 1, pos.col);
-    return below === 1 || below === 'T';
+    return below === 1 || below === 'T' || below === 'B';
   }
 
   // Find the platform the player actually stands on from this position:
@@ -176,7 +186,9 @@ function buildPrompt(grid, physicsParams, deathPositions = []) {
   Set "solvable": ${bfsSolvable}. Do NOT override this.
 
 RULES FOR DESIGN SUGGESTIONS (read carefully):
-  - Spikes do NOT make a level unsolvable. Players can jump over them. Do NOT flag spikes as blocking.
+  - Spikes, saws, walkers, and flyers do NOT make a level unsolvable. Players can avoid them. Do NOT flag hazards as blocking.
+  - Crumble platforms (B) ARE solid until stepped on — they still count as valid landing spots.
+  - Springs (J) extend effective jump height — platforms reachable only via spring should still be called reachable.
   - A "lonely platform" is fine as long as it is REACHABLE per the table above. Do NOT flag reachable platforms as problems.
   - START is ${startGrounded ? 'GROUNDED (solid tile directly below — do NOT flag as floating)' : 'FLOATING (no solid tile below — this IS a real problem)'}.
   - FINISH is ${goalGrounded  ? 'GROUNDED (solid tile directly below — do NOT flag as floating)' : 'FLOATING (no solid tile below — this IS a real problem)'}.
@@ -199,6 +211,11 @@ LEVEL:
   START (player): col ${playerPos.col}, row ${playerPos.row} — ${startGrounded ? 'grounded' : 'FLOATING'}
   FINISH (goal):  col ${goalPos.col},  row ${goalPos.row}  — ${goalGrounded  ? 'grounded' : 'FLOATING'}
   Danger spikes:  ${spikeList}
+  Saws (instant death): ${sawList}
+  Walker enemies (patrol platforms, kill on touch): ${walkerList}
+  Flying enemies (sine-wave, cannot be stomped): ${flyerList}
+  Springs (launch player 2x jump height): ${springList}
+  Crumble platforms (fall 0.6s after stepped on): ${crumbleList}
 
 YOUR JOB:
 1. Set "solvable": ${bfsSolvable} — do not change it.

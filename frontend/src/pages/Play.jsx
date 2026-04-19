@@ -390,6 +390,7 @@ export default function Play() {
   const [hardModeLoading, setHardModeLoading] = useState(false)
   const [hardModeError, setHardModeError]     = useState(null)
   const [showWhyCard, setShowWhyCard]         = useState(false)
+  const [hardDifficulty, setHardDifficulty]   = useState(null) // 'light'|'medium'|'brutal'
   const isHardModeRef                         = useRef(false)
 
   // Telemetry
@@ -415,6 +416,8 @@ export default function Play() {
   const movingPlatformsRef = useRef([])
   // Screen shake: frames remaining
   const shakeRef = useRef(0)
+  // Original level data for restart
+  const originalLevelDataRef = useRef(null)
 
   // For '?' suggestion hover tooltip
   const camRef = useRef({ x: 0, y: 0 })
@@ -426,7 +429,11 @@ export default function Play() {
   useEffect(() => {
     const raw = localStorage.getItem(`level_${id}`)
     if (!raw) { setLoadError('Level not found. It may have expired or the link is invalid.'); return }
-    try { setLevelData(JSON.parse(raw)) } catch { setLoadError('Level data is corrupted.') }
+    try {
+      const parsed = JSON.parse(raw)
+      originalLevelDataRef.current = parsed
+      setLevelData(parsed)
+    } catch { setLoadError('Level data is corrupted.') }
   }, [id])
 
   // Sync phys state → physRef so game loop always reads latest values
@@ -874,8 +881,6 @@ export default function Play() {
       }
 
       // Flyer collision - sine-wave enemies kill on contact, not stompable
-      const pw = TILE * 0.75
-      const ph = TILE * 0.9
       for (const f of flyersRef.current) {
         const fy = f.centerY + Math.sin(g.frame * f.speed) * f.amplitude
         const fr = fy - TILE / 2
@@ -928,13 +933,14 @@ export default function Play() {
         if ((wallTile && wallTile !== '' && isSolid(grid, w.row, nextCol)) || !floorAhead || wCol < w.minCol || wCol > w.maxCol) {
           w.vx = -w.vx
         }
-        // Kill player if overlapping walker
-        const wx = LABEL_LEFT + w.x - camRef.current.x
-        const wy = LABEL_TOP  + w.row * TILE - camRef.current.y
-        const px = LABEL_LEFT + g.px - camRef.current.x
-        const py = LABEL_TOP  + g.py - camRef.current.y
-        const pw2 = TILE * 0.75, ph2 = TILE * 0.9
-        if (px < wx + TILE && px + pw2 > wx && py < wy + TILE && py + ph2 > wy) {
+        // Kill player if overlapping walker (world-space AABB, hitbox = 70% centered)
+        const walkerHW = TILE * 0.35
+        const walkerCX = w.x + TILE / 2
+        const walkerCY = w.row * TILE + TILE / 2
+        const playerCX = g.px + pw * 0.5
+        const playerCY = g.py + ph * 0.5
+        if (Math.abs(playerCX - walkerCX) < walkerHW + pw * 0.5 &&
+            Math.abs(playerCY - walkerCY) < TILE * 0.4 + ph * 0.5) {
           telemetryRef.current.deaths++
           telemetryRef.current.deathPoints.push({ col: wCol, row: w.row })
           shakeRef.current = 8
@@ -943,26 +949,34 @@ export default function Play() {
         }
       }
 
-      // New tile behaviors
-      for (let r = top2; r <= bottom2; r++) {
+      // Saw (Z): not solid, use expanded AABB (+1 row) to catch floor-level saws
+      const sawTop    = Math.floor(g.py / TILE)
+      const sawBottom = Math.floor((g.py + ph) / TILE)
+      for (let r = sawTop; r <= sawBottom; r++) {
         for (let c = left2; c <= right2; c++) {
-          const t = getTile(grid, r, c)
-          // Saw = instant death
-          if (t === 'Z') {
+          if (getTile(grid, r, c) === 'Z') {
             telemetryRef.current.deaths++
             telemetryRef.current.deathPoints.push({ col: c, row: r })
             shakeRef.current = 8
+            setDeathCount(d => d + 1)
             if (simulateModeRef.current) recordSimDeath(c, r)
             g.state = 'dead'; setTimeout(respawn, 400); return
           }
-          // Spring = big jump boost
-          if (t === 'J' && g.pvy > 0) {
+        }
+      }
+
+      // Spring (J) and Crumble (B): solid tiles — check floor row directly
+      if (g.onGround) {
+        const floorRow = Math.floor((g.py + ph) / TILE)
+        for (let c = left2; c <= right2; c++) {
+          const ft = getTile(grid, floorRow, c)
+          if (ft === 'J') {
             g.pvy = -(physRef.current.jumpStrength * 2.2)
             g.onGround = false
+            break
           }
-          // Crumble = platform that falls away
-          if (t === 'B' && g.onGround) {
-            const key = `${r},${c}`
+          if (ft === 'B') {
+            const key = `${floorRow},${c}`
             if (!crumbleRef.current.has(key)) {
               crumbleRef.current.set(key, { timer: 0, falling: false })
             }
@@ -1458,21 +1472,42 @@ export default function Play() {
     setVerifyTrigger(t => t + 1)
   }, [phys])
 
-  const handleTryHardMode = useCallback(async () => {
+  const handleRestartOriginal = useCallback(() => {
+    const orig = originalLevelDataRef.current
+    if (!orig) return
+    setIsHardMode(false)
+    isHardModeRef.current = false
+    setHardModeData(null)
+    setShowWhyCard(false)
+    setGameWon(false)
+    setRageQuit(false)
+    setDeathCount(0)
+    setHardDifficulty(null)
+    crumbleRef.current.clear()
+    walkersRef.current.clear()
+    flyersRef.current = []
+    telemetryRef.current = { deaths: 0, deathPoints: [], jumps: 0, coinsCollected: 0, coinsTotal: 0, reachedGoal: false, idleTime: 0, pathSampled: [], startTime: Date.now(), endTime: null }
+    setLevelData({ ...orig })
+  }, [])
+
+  const handleTryHardMode = useCallback(async (difficulty = 'medium') => {
+    setHardDifficulty(difficulty)
     setHardModeLoading(true)
     setHardModeError(null)
+    const sourceLevel = originalLevelDataRef.current || levelData
     try {
       const res = await fetch('/api/levels/hard-mode', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          grid: levelData.data,
-          width: levelData.width,
-          height: levelData.height,
-          playerStart: levelData.playerStart,
-          goal: levelData.goal,
+          grid: sourceLevel.data,
+          width: sourceLevel.width,
+          height: sourceLevel.height,
+          playerStart: sourceLevel.playerStart,
+          goal: sourceLevel.goal,
           deathPositions: simDeathsRef.current,
           telemetry: telemetryRef.current,
+          difficulty,
         }),
       })
       if (!res.ok) {
@@ -1496,7 +1531,7 @@ export default function Play() {
           while (minCol > 0 && isSolid(data.level.data, r + 1, minCol - 1)) minCol--
           while (maxCol < (data.level.data[r]?.length ?? 0) - 1 && isSolid(data.level.data, r + 1, maxCol + 1)) maxCol++
           walkersRef.current.set(`${r},${c}`, {
-            row: r, col: c, x: c * TILE, vx: 60, minCol, maxCol, alive: true
+            row: r, col: c, x: c * TILE_SIZE, vx: 60, minCol, maxCol, alive: true
           })
         }
       }))
@@ -1725,15 +1760,22 @@ export default function Play() {
                     <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/30 mb-4">
                       <p className="text-red-300 text-xs font-bold uppercase tracking-widest mb-1">⚡ Let the AI remix your pain</p>
                       <p className="text-stone-400 text-xs mb-3">It tracked every death. Now it will use that against you.</p>
-                      <button
-                        onClick={handleTryHardMode}
-                        disabled={hardModeLoading}
-                        className="w-full px-4 py-2.5 bg-red-600 hover:bg-red-700 disabled:bg-red-900 disabled:cursor-not-allowed text-white font-black rounded-xl transition-colors text-sm flex items-center justify-center gap-2"
-                      >
-                        {hardModeLoading ? (
-                          <><span className="animate-spin">⚙</span> The AI is watching how you played...</>
-                        ) : '⚡ Try Hard Mode'}
-                      </button>
+                      {hardModeLoading ? (
+                        <div className="flex items-center justify-center gap-2 py-2 text-orange-400 text-sm font-bold">
+                          <span className="animate-spin">⚙</span> AI is studying your deaths...
+                        </div>
+                      ) : (
+                        <div className="flex gap-2">
+                          {[['😅','Light','light','bg-yellow-600 hover:bg-yellow-700'],
+                            ['💀','Brutal','medium','bg-orange-600 hover:bg-orange-700'],
+                            ['☠️','Nightmare','brutal','bg-red-700 hover:bg-red-800']].map(([icon, label, diff, cls]) => (
+                            <button key={diff} onClick={() => handleTryHardMode(diff)}
+                              className={`flex-1 py-2 ${cls} text-white font-black rounded-xl text-xs transition-colors flex flex-col items-center gap-0.5`}>
+                              <span>{icon}</span><span>{label}</span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
                       {hardModeError && <p className="text-red-400 text-xs mt-1">{hardModeError}</p>}
                     </div>
                     <button
@@ -1772,20 +1814,47 @@ export default function Play() {
 
                     {!isHardMode && (
                       <div className="mt-4 mb-2 p-3 rounded-xl bg-red-500/10 border border-red-500/30">
-                        <p className="text-red-300 text-xs font-bold uppercase tracking-widest mb-1">⚡ Think you're tough?</p>
-                        <p className="text-stone-400 text-xs mb-3">Our AI will remix this level with enemies, saws &amp; crumbling platforms.</p>
-                        <button
-                          onClick={handleTryHardMode}
-                          disabled={hardModeLoading}
-                          className="w-full px-4 py-2.5 bg-red-600 hover:bg-red-700 disabled:bg-red-900 disabled:cursor-not-allowed text-white font-black rounded-xl transition-colors text-sm flex items-center justify-center gap-2"
-                        >
-                          {hardModeLoading ? (
-                            <><span className="animate-spin">⚙</span> The AI is watching how you played...</>
-                          ) : (
-                            '⚡ Try Hard Mode'
-                          )}
-                        </button>
-                        {hardModeError && <p className="text-red-400 text-xs mt-1">{hardModeError}</p>}
+                        <p className="text-red-300 text-xs font-bold uppercase tracking-widest mb-1">⚡ Pick Your Poison</p>
+                        <p className="text-stone-400 text-xs mb-3">AI remixes this level using your death data. Choose how evil:</p>
+                        {hardModeLoading ? (
+                          <div className="flex items-center justify-center gap-2 py-2 text-orange-400 text-sm font-bold">
+                            <span className="animate-spin">⚙</span> AI is studying your deaths...
+                          </div>
+                        ) : (
+                          <div className="flex gap-2">
+                            {[['😅','Light','light','bg-yellow-600 hover:bg-yellow-700'],
+                              ['💀','Brutal','medium','bg-orange-600 hover:bg-orange-700'],
+                              ['☠️','Nightmare','brutal','bg-red-700 hover:bg-red-800']].map(([icon, label, diff, cls]) => (
+                              <button key={diff} onClick={() => handleTryHardMode(diff)}
+                                className={`flex-1 py-2 ${cls} text-white font-black rounded-xl text-xs transition-colors flex flex-col items-center gap-0.5`}>
+                                <span>{icon}</span><span>{label}</span>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                        {hardModeError && <p className="text-red-400 text-xs mt-2">{hardModeError}</p>}
+                      </div>
+                    )}
+                    {isHardMode && (
+                      <div className="mt-4 mb-2 p-3 rounded-xl bg-red-500/10 border border-red-500/30">
+                        <p className="text-red-300 text-xs font-bold uppercase tracking-widest mb-2">⚡ Try A Different Remix</p>
+                        {hardModeLoading ? (
+                          <div className="flex items-center justify-center gap-2 py-2 text-orange-400 text-sm font-bold">
+                            <span className="animate-spin">⚙</span> AI is studying your deaths...
+                          </div>
+                        ) : (
+                          <div className="flex gap-2">
+                            {[['😅','Light','light','bg-yellow-600 hover:bg-yellow-700'],
+                              ['💀','Brutal','medium','bg-orange-600 hover:bg-orange-700'],
+                              ['☠️','Nightmare','brutal','bg-red-700 hover:bg-red-800']].map(([icon, label, diff, cls]) => (
+                              <button key={diff} onClick={() => handleTryHardMode(diff)}
+                                className={`flex-1 py-2 ${cls} text-white font-black rounded-xl text-xs transition-colors flex flex-col items-center gap-0.5`}>
+                                <span>{icon}</span><span>{label}</span>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                        {hardModeError && <p className="text-red-400 text-xs mt-2">{hardModeError}</p>}
                       </div>
                     )}
 
@@ -1795,6 +1864,7 @@ export default function Play() {
                           setGameWon(false)
                           setRageQuit(false)
                           setDeathCount(0)
+                          crumbleRef.current.clear()
                           telemetryRef.current = { deaths: 0, deathPoints: [], jumps: 0, coinsCollected: 0, coinsTotal: telemetryRef.current.coinsTotal, reachedGoal: false, idleTime: 0, pathSampled: [], startTime: Date.now(), endTime: null }
                           if (gameRef.current) {
                             gameRef.current.state = 'playing'
@@ -1807,6 +1877,12 @@ export default function Play() {
                         className="px-6 py-3 bg-orange-500 hover:bg-orange-600 text-white font-bold rounded-2xl transition-colors text-lg">
                         Play Again
                       </button>
+                      {isHardMode && (
+                        <button onClick={handleRestartOriginal}
+                          className="px-6 py-3 bg-stone-700 hover:bg-stone-600 text-white font-bold rounded-2xl transition-colors text-sm">
+                          ↩ Back to Original Level
+                        </button>
+                      )}
                       <button onClick={handleShare}
                         className="px-6 py-3 bg-white/10 hover:bg-white/20 text-white font-semibold rounded-2xl transition-colors flex items-center justify-center gap-2">
                         <Share2 size={16} /> Share This Level

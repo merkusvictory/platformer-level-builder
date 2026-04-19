@@ -27,18 +27,39 @@ const HardModeOutputSchema = z.object({
 const PROTECTED = new Set(['P', 'G']);
 
 // ---------------------------------------------------------------------------
-// System prompt
+// System prompt (parameterized by difficulty)
 // ---------------------------------------------------------------------------
-const SYSTEM_PROMPT = `You are a platformer level designer specializing in hard mode remixes.
+const DIFFICULTY_INSTRUCTIONS = {
+  light: `Target a MILD difficulty increase (1.3x). Add 2-3 changes total.
+- Prefer walkers on wide platforms or a couple extra spikes at death hotspots.
+- Do NOT add saws, nightmare hazard chains, or crumble-only paths.
+- difficulty_estimate should be 4-6.`,
+  medium: `Target a MODERATE difficulty increase (2x). Add 4-6 changes total.
+- Mix walkers, crumble platforms, and a saw or two.
+- Use telemetry to target weak spots.
+- difficulty_estimate should be 6-8.`,
+  brutal: `Target a BRUTAL difficulty increase (3x+). Add 7-10 changes total.
+- Add saws at chokepoints, walkers on every major platform, crumble tiles on key paths, flying enemies over gaps.
+- Make the player use every skill they have.
+- difficulty_estimate should be 8-10.`,
+};
+
+function buildSystemPrompt(difficulty) {
+  const diffInstr = DIFFICULTY_INSTRUCTIONS[difficulty] || DIFFICULTY_INSTRUCTIONS.medium;
+  return `You are a platformer level designer specializing in hard mode remixes.
 Given a level grid and player telemetry, return a harder remix of the level.
+
+DIFFICULTY LEVEL: ${difficulty.toUpperCase()}
+${diffInstr}
 
 Rules:
 - Preserve spawn (P) and goal (G) locations exactly. Never place tiles on them.
-- Do not make the level unwinnable. Target 2-3x difficulty increase.
+- Do not make the level unwinnable — always keep a clear path from P to G.
+- Walker (W) tiles must be placed on a row ABOVE a solid platform so they have ground to walk on. Do not place W on the floor row or floating in air.
 - Use telemetry to target the player's weaknesses:
   - Many spike deaths in one area: add spikes or saws near those coordinates.
   - Player rushed (low idle time): add timing-based enemies (W=walker, F=flyer).
-  - Player collected every coin: place coins in harder-to-reach spots (remove some, add back on platforms above gaps).
+  - Player collected every coin: place coins in harder-to-reach spots.
   - High death count overall: add crumble (B) platforms on key paths.
 - Available tile types to add: W (walker enemy), F (flying enemy), Z (saw), J (spring), B (crumble platform), S (spike).
 - Tile types you must NOT touch: P (spawn), G (goal).
@@ -52,6 +73,7 @@ Output JSON shape (strict):
 }
 
 Make each change description specific and reference the telemetry. Example: "Added walker at (col 12, row 8) because player died there 3 times." Do not use em dashes in descriptions.`;
+}
 
 // ---------------------------------------------------------------------------
 // Strip prose/code-fence wrappers from model output before JSON.parse
@@ -120,7 +142,7 @@ async function invokeWithRetry(model, messages, retries = 2) {
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
-async function invoke({ level, telemetry }) {
+async function invoke({ level, telemetry, difficulty = 'medium' }) {
   const model = new ChatOpenAI({
     apiKey: process.env.LLM_API_KEY || process.env.K2_API_KEY,
     model:  process.env.LLM_MODEL   || 'kimi-k2-0905-preview',
@@ -135,7 +157,7 @@ async function invoke({ level, telemetry }) {
   const gridStr = JSON.stringify(level.data);
 
   const messages = [
-    { role: 'system', content: SYSTEM_PROMPT },
+    { role: 'system', content: buildSystemPrompt(difficulty) },
     {
       role: 'user',
       content: `Level grid (${level.height || level.data.length} rows x ${level.width || (level.data[0]?.length ?? 0)} cols):\n${gridStr}\n\nPlayer telemetry:\n${telemetrySummary}\n\nRemix this level to be harder, targeting the weaknesses above.`,
