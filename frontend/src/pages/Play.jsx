@@ -348,8 +348,6 @@ export default function Play() {
   const [loadError, setLoadError] = useState(null)
   const [gameWon, setGameWon] = useState(false)
   const [winTime, setWinTime] = useState(0)
-  const [rageQuit, setRageQuit] = useState(false)
-  const [deathCount, setDeathCount] = useState(0)
 
   // Physics slider state (drives UI + game loop via physRef)
   const [phys, setPhys] = useState({
@@ -384,14 +382,6 @@ export default function Play() {
   // Physics panel open/close
   const [physPanelOpen, setPhysPanelOpen] = useState(true)
 
-  // Hard Mode
-  const [isHardMode, setIsHardMode]           = useState(false)
-  const [hardModeData, setHardModeData]       = useState(null)
-  const [hardModeLoading, setHardModeLoading] = useState(false)
-  const [hardModeError, setHardModeError]     = useState(null)
-  const [showWhyCard, setShowWhyCard]         = useState(false)
-  const [hardDifficulty, setHardDifficulty]   = useState(null) // 'light'|'medium'|'brutal'
-  const isHardModeRef                         = useRef(false)
 
   // Telemetry
   const telemetryRef = useRef({
@@ -416,8 +406,6 @@ export default function Play() {
   const movingPlatformsRef = useRef([])
   // Screen shake: frames remaining
   const shakeRef = useRef(0)
-  // Original level data for restart
-  const originalLevelDataRef = useRef(null)
 
   // For '?' suggestion hover tooltip
   const camRef = useRef({ x: 0, y: 0 })
@@ -429,11 +417,7 @@ export default function Play() {
   useEffect(() => {
     const raw = localStorage.getItem(`level_${id}`)
     if (!raw) { setLoadError('Level not found. It may have expired or the link is invalid.'); return }
-    try {
-      const parsed = JSON.parse(raw)
-      originalLevelDataRef.current = parsed
-      setLevelData(parsed)
-    } catch { setLoadError('Level data is corrupted.') }
+    try { setLevelData(JSON.parse(raw)) } catch { setLoadError('Level data is corrupted.') }
   }, [id])
 
   // Sync phys state → physRef so game loop always reads latest values
@@ -450,9 +434,6 @@ export default function Play() {
   }, [simulateMode])
   // Keep k2ResultRef in sync so the game loop can read it without closure issues
   useEffect(() => { k2ResultRef.current = k2Result }, [k2Result])
-  // Sync isHardMode → isHardModeRef
-  useEffect(() => { isHardModeRef.current = isHardMode }, [isHardMode])
-
   // Update a single physics param
   const setPhysParam = useCallback((key, val) => {
     setPhys(prev => ({ ...prev, [key]: val }))
@@ -842,7 +823,6 @@ export default function Play() {
         telemetryRef.current.deaths++
         telemetryRef.current.deathPoints.push({ col: Math.round(g.px / TILE), row: rows - 1 })
         shakeRef.current = 8
-        setDeathCount(d => d + 1)
         if (simulateModeRef.current) recordSimDeath(Math.round(g.px / TILE), Math.round((g.py - 200) / TILE))
         g.state = 'dead'; setTimeout(respawn, 400); return
       }
@@ -858,8 +838,7 @@ export default function Play() {
             telemetryRef.current.deaths++
             telemetryRef.current.deathPoints.push({ col: c, row: r })
             shakeRef.current = 8
-            setDeathCount(d => d + 1)
-            if (simulateModeRef.current) recordSimDeath(c, r)
+                if (simulateModeRef.current) recordSimDeath(c, r)
             g.state = 'dead'; setTimeout(respawn, 400); return
           }
           if (t === 'G') {
@@ -891,8 +870,7 @@ export default function Play() {
           telemetryRef.current.deaths++
           telemetryRef.current.deathPoints.push({ col: Math.round(f.x / TILE), row: Math.round(fy / TILE) })
           shakeRef.current = 8
-          setDeathCount(d => d + 1)
-          if (simulateModeRef.current) recordSimDeath(Math.round(f.x / TILE), Math.round(fy / TILE))
+            if (simulateModeRef.current) recordSimDeath(Math.round(f.x / TILE), Math.round(fy / TILE))
           g.state = 'dead'; setTimeout(respawn, 400); return
         }
       }
@@ -958,8 +936,7 @@ export default function Play() {
             telemetryRef.current.deaths++
             telemetryRef.current.deathPoints.push({ col: c, row: r })
             shakeRef.current = 8
-            setDeathCount(d => d + 1)
-            if (simulateModeRef.current) recordSimDeath(c, r)
+                if (simulateModeRef.current) recordSimDeath(c, r)
             g.state = 'dead'; setTimeout(respawn, 400); return
           }
         }
@@ -1011,7 +988,7 @@ export default function Play() {
       }
 
       // Background
-      ctx.fillStyle = isHardModeRef.current ? '#0a0510' : '#1e1b2e'
+      ctx.fillStyle = '#1e1b2e'
       ctx.fillRect(0, 0, W, H)
 
       // Label margin backgrounds
@@ -1290,20 +1267,6 @@ export default function Play() {
 
       ctx.restore() // end clip
 
-      // Hard Mode badge
-      if (isHardModeRef.current) {
-        ctx.save()
-        ctx.font = 'bold 11px monospace'
-        ctx.textAlign = 'right'
-        ctx.textBaseline = 'top'
-        ctx.fillStyle = '#ef4444'
-        ctx.shadowColor = '#ef4444'
-        ctx.shadowBlur = 10
-        ctx.fillText('⚡ HARD MODE', W - 8, LABEL_TOP + 4)
-        ctx.shadowBlur = 0
-        ctx.restore()
-      }
-
       // Level border
       ctx.strokeStyle = 'rgba(122,162,247,0.25)'
       ctx.lineWidth = 1
@@ -1472,90 +1435,6 @@ export default function Play() {
     setVerifyTrigger(t => t + 1)
   }, [phys])
 
-  const handleRestartOriginal = useCallback(() => {
-    const orig = originalLevelDataRef.current
-    if (!orig) return
-    setIsHardMode(false)
-    isHardModeRef.current = false
-    setHardModeData(null)
-    setShowWhyCard(false)
-    setGameWon(false)
-    setRageQuit(false)
-    setDeathCount(0)
-    setHardDifficulty(null)
-    crumbleRef.current.clear()
-    walkersRef.current.clear()
-    flyersRef.current = []
-    telemetryRef.current = { deaths: 0, deathPoints: [], jumps: 0, coinsCollected: 0, coinsTotal: 0, reachedGoal: false, idleTime: 0, pathSampled: [], startTime: Date.now(), endTime: null }
-    setLevelData({ ...orig })
-  }, [])
-
-  const handleTryHardMode = useCallback(async (difficulty = 'medium') => {
-    setHardDifficulty(difficulty)
-    setHardModeLoading(true)
-    setHardModeError(null)
-    const sourceLevel = originalLevelDataRef.current || levelData
-    try {
-      const res = await fetch('/api/levels/hard-mode', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          grid: sourceLevel.data,
-          width: sourceLevel.width,
-          height: sourceLevel.height,
-          playerStart: sourceLevel.playerStart,
-          goal: sourceLevel.goal,
-          deathPositions: simDeathsRef.current,
-          telemetry: telemetryRef.current,
-          difficulty,
-        }),
-      })
-      if (!res.ok) {
-        const errBody = await res.json().catch(() => ({}))
-        throw new Error(errBody.error || `Server error ${res.status}`)
-      }
-      const data = await res.json()
-      setHardModeData(data)
-      setIsHardMode(true)
-      isHardModeRef.current = true
-      setGameWon(false)
-      setShowWhyCard(true)
-      // Reset crumble state
-      crumbleRef.current.clear()
-      // Initialize walkers from new grid
-      walkersRef.current.clear()
-      data.level.data.forEach((row, r) => row.forEach((t, c) => {
-        if (t === 'W') {
-          // Find platform extent for patrol bounds
-          let minCol = c, maxCol = c
-          while (minCol > 0 && isSolid(data.level.data, r + 1, minCol - 1)) minCol--
-          while (maxCol < (data.level.data[r]?.length ?? 0) - 1 && isSolid(data.level.data, r + 1, maxCol + 1)) maxCol++
-          walkersRef.current.set(`${r},${c}`, {
-            row: r, col: c, x: c * TILE_SIZE, vx: 60, minCol, maxCol, alive: true
-          })
-        }
-      }))
-      // Update level data with hard mode level
-      setLevelData(prev => ({ ...prev, data: data.level.data }))
-      // Respawn player
-      if (gameRef.current) {
-        gameRef.current.state = 'playing'
-        gameRef.current.px = gameRef.current.spawnX
-        gameRef.current.py = gameRef.current.spawnY
-        gameRef.current.pvx = 0
-        gameRef.current.pvy = 0
-        // Re-initialize coins for new grid
-        const newCoins = new Set()
-        data.level.data.forEach((row, r) => row.forEach((t, c) => { if (t === 'C') newCoins.add(`${r},${c}`) }))
-        gameRef.current.coins = newCoins
-      }
-    } catch (err) {
-      setHardModeError(err.message)
-    } finally {
-      setHardModeLoading(false)
-    }
-  }, [levelData])
-
   const handleShare = useCallback(() => {
     navigator.clipboard.writeText(window.location.href)
       .then(() => setToast('Link copied to clipboard!'))
@@ -1586,7 +1465,7 @@ export default function Play() {
   }
 
   return (
-    <div className={`flex h-dvh overflow-hidden transition-colors duration-700 ${isHardMode ? 'hard-theme bg-[#0a0004]' : 'easy-theme bg-[#0f0e1a]'}`}>
+    <div className="easy-theme flex h-dvh overflow-hidden bg-[#0f0e1a]">
 
       {/* ── Physics Sidebar ── */}
       <div className={`flex-shrink-0 flex flex-col overflow-hidden transition-all duration-300 ${physPanelOpen ? 'w-52' : 'w-0'}`}>
@@ -1668,14 +1547,6 @@ export default function Play() {
           >
             {isDevMode ? '> DEV: ON_' : '> DEV'}
           </button>
-          {isHardMode && hardModeData && (
-            <button
-              onClick={() => setShowWhyCard(w => !w)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-500/20 text-red-400 hover:bg-red-500/30 transition-colors text-xs font-bold border border-red-500/30"
-            >
-              ⚡ Why Hard?
-            </button>
-          )}
           <button onClick={handleShare} aria-label="Share this level"
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/10 text-stone-300 hover:bg-white/20 hover:text-white transition-colors text-sm font-medium">
             <Share2 size={14} /> Share
@@ -1722,73 +1593,6 @@ export default function Play() {
               )}
             </AnimatePresence>
 
-            {/* Rage-quit prompt after 5 deaths (easy mode only) */}
-            <AnimatePresence>
-              {!isHardMode && !gameWon && !rageQuit && deathCount >= 5 && (
-                <motion.div
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0 }}
-                  className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 flex items-center gap-3
-                             bg-[#1a0a0a]/90 border border-red-500/40 rounded-2xl px-4 py-3 shadow-xl backdrop-blur-sm"
-                >
-                  <span className="text-stone-400 text-xs">Died {deathCount}x...</span>
-                  <button
-                    onClick={() => { telemetryRef.current.endTime = Date.now(); setRageQuit(true); }}
-                    className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl text-xs transition-colors"
-                  >
-                    Give Up?
-                  </button>
-                </motion.div>
-              )}
-            </AnimatePresence>
-
-            {/* Rage-quit overlay (same as win but with different framing) */}
-            <AnimatePresence>
-              {rageQuit && !isHardMode && (
-                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                  className="absolute inset-0 flex items-center justify-center bg-black/60 backdrop-blur-sm z-30">
-                  <motion.div
-                    initial={{ scale: 0.8, y: 20 }} animate={{ scale: 1, y: 0 }}
-                    transition={{ type: 'spring', stiffness: 250, damping: 20 }}
-                    className="bg-[#1e1b2e] border border-white/20 rounded-3xl p-8 text-center shadow-2xl max-w-sm mx-4">
-                    <div className="text-5xl mb-3">😤</div>
-                    <h2 className="text-2xl font-black text-white mb-1">Alright, you tried.</h2>
-                    <p className="text-stone-400 text-sm mb-4">{deathCount} deaths. The AI saw everything.</p>
-                    <p className="text-stone-500 text-xs mb-1">Jumps: {telemetryRef.current.jumps}</p>
-                    <p className="text-stone-500 text-xs mb-4">Coins: {telemetryRef.current.coinsCollected} / {telemetryRef.current.coinsTotal}</p>
-                    <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/30 mb-4">
-                      <p className="text-red-300 text-xs font-bold uppercase tracking-widest mb-1">⚡ Let the AI remix your pain</p>
-                      <p className="text-stone-400 text-xs mb-3">It tracked every death. Now it will use that against you.</p>
-                      {hardModeLoading ? (
-                        <div className="flex items-center justify-center gap-2 py-2 text-orange-400 text-sm font-bold">
-                          <span className="animate-spin">⚙</span> AI is studying your deaths...
-                        </div>
-                      ) : (
-                        <div className="flex gap-2">
-                          {[['😅','Light','light','bg-yellow-600 hover:bg-yellow-700'],
-                            ['💀','Brutal','medium','bg-orange-600 hover:bg-orange-700'],
-                            ['☠️','Nightmare','brutal','bg-red-700 hover:bg-red-800']].map(([icon, label, diff, cls]) => (
-                            <button key={diff} onClick={() => handleTryHardMode(diff)}
-                              className={`flex-1 py-2 ${cls} text-white font-black rounded-xl text-xs transition-colors flex flex-col items-center gap-0.5`}>
-                              <span>{icon}</span><span>{label}</span>
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                      {hardModeError && <p className="text-red-400 text-xs mt-1">{hardModeError}</p>}
-                    </div>
-                    <button
-                      onClick={() => { setRageQuit(false); setDeathCount(0); }}
-                      className="text-stone-500 hover:text-stone-300 text-sm transition-colors"
-                    >
-                      Keep trying
-                    </button>
-                  </motion.div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-
             {/* Win overlay */}
             <AnimatePresence>
               {gameWon && (
@@ -1798,72 +1602,19 @@ export default function Play() {
                     initial={{ scale: 0.7, y: 30 }} animate={{ scale: 1, y: 0 }}
                     transition={{ type: 'spring', stiffness: 250, damping: 20 }}
                     className="bg-[#1e1b2e] border border-white/20 rounded-3xl p-10 text-center shadow-2xl max-w-sm mx-4">
-                    <div className="text-6xl mb-4">{isHardMode ? '🔥' : '🎉'}</div>
-                    <h2 className={`text-3xl font-black mb-2 ${isHardMode ? 'text-red-400' : 'text-white'}`}>
-                      {isHardMode ? "You beat the AI's trap." : 'You Win!'}
-                    </h2>
-                    {isHardMode && hardModeData && (
-                      <div className="inline-flex items-center gap-1.5 bg-red-500/20 border border-red-500/40 rounded-full px-3 py-1 mb-3">
-                        <span className="text-red-400 text-xs font-bold">Difficulty</span>
-                        <span className="text-white text-sm font-black">{hardModeData.difficulty_estimate}/10</span>
-                      </div>
-                    )}
+                    <div className="text-6xl mb-4">🎉</div>
+                    <h2 className="text-3xl font-black text-white mb-2">You Win!</h2>
                     <p className="text-stone-400 mb-1">Time: <span className="text-white font-bold">{winTime.toFixed(1)}s</span></p>
                     <p className="text-stone-500 text-xs mb-1">Deaths: {telemetryRef.current.deaths} · Jumps: {telemetryRef.current.jumps}</p>
                     {score > 0 && <p className="text-amber-400 mb-4">Coins: <span className="font-bold">{score}</span></p>}
-
-                    {!isHardMode && (
-                      <div className="mt-4 mb-2 p-3 rounded-xl bg-red-500/10 border border-red-500/30">
-                        <p className="text-red-300 text-xs font-bold uppercase tracking-widest mb-1">⚡ Pick Your Poison</p>
-                        <p className="text-stone-400 text-xs mb-3">AI remixes this level using your death data. Choose how evil:</p>
-                        {hardModeLoading ? (
-                          <div className="flex items-center justify-center gap-2 py-2 text-orange-400 text-sm font-bold">
-                            <span className="animate-spin">⚙</span> AI is studying your deaths...
-                          </div>
-                        ) : (
-                          <div className="flex gap-2">
-                            {[['😅','Light','light','bg-yellow-600 hover:bg-yellow-700'],
-                              ['💀','Brutal','medium','bg-orange-600 hover:bg-orange-700'],
-                              ['☠️','Nightmare','brutal','bg-red-700 hover:bg-red-800']].map(([icon, label, diff, cls]) => (
-                              <button key={diff} onClick={() => handleTryHardMode(diff)}
-                                className={`flex-1 py-2 ${cls} text-white font-black rounded-xl text-xs transition-colors flex flex-col items-center gap-0.5`}>
-                                <span>{icon}</span><span>{label}</span>
-                              </button>
-                            ))}
-                          </div>
-                        )}
-                        {hardModeError && <p className="text-red-400 text-xs mt-2">{hardModeError}</p>}
-                      </div>
-                    )}
-                    {isHardMode && (
-                      <div className="mt-4 mb-2 p-3 rounded-xl bg-red-500/10 border border-red-500/30">
-                        <p className="text-red-300 text-xs font-bold uppercase tracking-widest mb-2">⚡ Try A Different Remix</p>
-                        {hardModeLoading ? (
-                          <div className="flex items-center justify-center gap-2 py-2 text-orange-400 text-sm font-bold">
-                            <span className="animate-spin">⚙</span> AI is studying your deaths...
-                          </div>
-                        ) : (
-                          <div className="flex gap-2">
-                            {[['😅','Light','light','bg-yellow-600 hover:bg-yellow-700'],
-                              ['💀','Brutal','medium','bg-orange-600 hover:bg-orange-700'],
-                              ['☠️','Nightmare','brutal','bg-red-700 hover:bg-red-800']].map(([icon, label, diff, cls]) => (
-                              <button key={diff} onClick={() => handleTryHardMode(diff)}
-                                className={`flex-1 py-2 ${cls} text-white font-black rounded-xl text-xs transition-colors flex flex-col items-center gap-0.5`}>
-                                <span>{icon}</span><span>{label}</span>
-                              </button>
-                            ))}
-                          </div>
-                        )}
-                        {hardModeError && <p className="text-red-400 text-xs mt-2">{hardModeError}</p>}
-                      </div>
-                    )}
-
+                    <div className="p-3 rounded-xl bg-violet-500/10 border border-violet-500/30 mb-4">
+                      <p className="text-violet-300 text-xs mb-1">Want a harder remix? Text your level ID to the bot.</p>
+                      <p className="text-stone-500 text-[10px]">See IMESSAGE_DEMO.md for setup instructions.</p>
+                    </div>
                     <div className="flex flex-col gap-3 mt-4">
                       <button
                         onClick={() => {
                           setGameWon(false)
-                          setRageQuit(false)
-                          setDeathCount(0)
                           crumbleRef.current.clear()
                           telemetryRef.current = { deaths: 0, deathPoints: [], jumps: 0, coinsCollected: 0, coinsTotal: telemetryRef.current.coinsTotal, reachedGoal: false, idleTime: 0, pathSampled: [], startTime: Date.now(), endTime: null }
                           if (gameRef.current) {
@@ -1877,12 +1628,6 @@ export default function Play() {
                         className="px-6 py-3 bg-orange-500 hover:bg-orange-600 text-white font-bold rounded-2xl transition-colors text-lg">
                         Play Again
                       </button>
-                      {isHardMode && (
-                        <button onClick={handleRestartOriginal}
-                          className="px-6 py-3 bg-stone-700 hover:bg-stone-600 text-white font-bold rounded-2xl transition-colors text-sm">
-                          ↩ Back to Original Level
-                        </button>
-                      )}
                       <button onClick={handleShare}
                         className="px-6 py-3 bg-white/10 hover:bg-white/20 text-white font-semibold rounded-2xl transition-colors flex items-center justify-center gap-2">
                         <Share2 size={16} /> Share This Level
@@ -1893,71 +1638,6 @@ export default function Play() {
                       </button>
                     </div>
                   </motion.div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-
-            {/* Why It's Hard explainer card */}
-            <AnimatePresence>
-              {showWhyCard && hardModeData?.changes && (
-                <motion.div
-                  initial={{ opacity: 0, x: 40 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: 40 }}
-                  className="absolute top-4 right-4 w-72 bg-[#0d0510] border border-red-500/40 rounded-2xl p-4 shadow-2xl z-30 overflow-y-auto max-h-[calc(100%-2rem)]"
-                >
-                  <div className="flex items-start justify-between mb-3">
-                    <div>
-                      <p className="text-[10px] font-bold text-red-400 uppercase tracking-widest mb-1">⚡ Why It's Harder</p>
-                      <div className="flex items-center gap-2">
-                        <div className="w-full bg-stone-800 rounded-full h-1.5 w-28">
-                          <div
-                            className="bg-gradient-to-r from-orange-500 to-red-500 h-1.5 rounded-full transition-all"
-                            style={{ width: `${(hardModeData.difficulty_estimate / 10) * 100}%` }}
-                          />
-                        </div>
-                        <span className="text-red-400 text-xs font-black">{hardModeData.difficulty_estimate}/10</span>
-                      </div>
-                    </div>
-                    <button onClick={() => setShowWhyCard(false)} className="text-stone-600 hover:text-stone-400 text-xs mt-1">✕</button>
-                  </div>
-
-                  <p className="text-[10px] text-stone-500 mb-3 italic">
-                    Based on your {telemetryRef.current.deaths} death{telemetryRef.current.deaths !== 1 ? 's' : ''} and {telemetryRef.current.jumps} jumps
-                  </p>
-
-                  <div className="space-y-2">
-                    {hardModeData.changes.slice(0, 6).map((change, i) => {
-                      const icon = change.type === 'enemy_walker' || change.type === 'walker' ? '👾'
-                                 : change.type === 'enemy_flyer'  || change.type === 'flyer'  ? '🦇'
-                                 : change.type === 'saw'          || change.type === 'Z'      ? '⚙'
-                                 : change.type === 'crumble'      || change.type === 'B'      ? '💥'
-                                 : change.type === 'spring'       || change.type === 'J'      ? '🌀'
-                                 : change.type === 'spike'        || change.type === 'S'      ? '🔺'
-                                 : '⚡'
-                      return (
-                        <div key={change.id || i} className="flex gap-2 p-2 rounded-lg bg-white/5">
-                          <span className="text-sm flex-shrink-0">{icon}</span>
-                          <p className="text-stone-300 text-[11px] leading-relaxed">{change.description}</p>
-                        </div>
-                      )
-                    })}
-                  </div>
-                  {hardModeData.changes.length > 6 && (
-                    <p className="text-stone-600 text-[10px] mt-2">+{hardModeData.changes.length - 6} more changes</p>
-                  )}
-
-                  {/* Legend */}
-                  <div className="mt-3 pt-3 border-t border-white/10">
-                    <p className="text-[10px] font-bold text-stone-500 uppercase tracking-widest mb-2">Legend</p>
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2"><span className="text-sm">👾</span><span className="text-[11px] text-stone-400"><span className="text-white font-bold">Walker</span> — patrols back and forth, deadly on touch</span></div>
-                      <div className="flex items-center gap-2"><span className="text-sm">🦇</span><span className="text-[11px] text-stone-400"><span className="text-white font-bold">Flyer</span> — drifts up and down, cannot be stomped</span></div>
-                      <div className="flex items-center gap-2"><span className="text-sm">⚙</span><span className="text-[11px] text-stone-400"><span className="text-white font-bold">Saw</span> — instant death on contact</span></div>
-                      <div className="flex items-center gap-2"><span className="text-sm">💥</span><span className="text-[11px] text-stone-400"><span className="text-white font-bold">Crumble</span> — falls 0.6s after you step on it</span></div>
-                      <div className="flex items-center gap-2"><span className="text-sm">🌀</span><span className="text-[11px] text-stone-400"><span className="text-white font-bold">Spring</span> — launches you super high</span></div>
-                    </div>
-                  </div>
                 </motion.div>
               )}
             </AnimatePresence>

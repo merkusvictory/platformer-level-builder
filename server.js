@@ -96,5 +96,37 @@ app.post('/api/levels/hard-mode', async (req, res) => {
   }
 });
 
+// ── Server-side level store (file-backed so Flux bot can read/write levels) ──
+const LEVELS_FILE = path.join(__dirname, 'levels_store.json');
+
+function readStore() {
+  try { return JSON.parse(fs.readFileSync(LEVELS_FILE, 'utf8')); }
+  catch { return {}; }
+}
+function writeStore(store) {
+  fs.writeFileSync(LEVELS_FILE, JSON.stringify(store, null, 2));
+}
+
+// GET /api/levels/:id — fetch a stored level
+app.get('/api/levels/:id', (req, res) => {
+  const store = readStore();
+  const level = store[req.params.id];
+  if (!level) return res.status(404).json({ error: 'Level not found.' });
+  res.json(level);
+});
+
+// POST /api/levels — save a level, returns { id }
+app.post('/api/levels', (req, res) => {
+  const level = req.body;
+  if (!level || !Array.isArray(level.data)) {
+    return res.status(400).json({ error: 'Invalid level data.' });
+  }
+  const id = Math.random().toString(36).slice(2, 8);
+  const store = readStore();
+  store[id] = level;
+  writeStore(store);
+  res.json({ id });
+});
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`Server running at http://localhost:${PORT}`));

@@ -3,8 +3,11 @@
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
-    "start": "node index.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "node server.js",
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "flux:login": "npx @photon-ai/flux login",
+    "flux:dev":   "npx @photon-ai/flux run --local  flux/agent.js",
+    "flux:prod":  "npx @photon-ai/flux run --prod   flux/agent.js"
   },
   "repository": {
     "type": "git",
