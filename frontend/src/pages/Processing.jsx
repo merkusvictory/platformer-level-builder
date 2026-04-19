@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import ThemeToggle from '../components/bits/ThemeToggle'
 
-const API = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '')
+const API = import.meta.env.VITE_API_URL || ''
 
 const MESSAGES = [
   'Reading your sketch...',
