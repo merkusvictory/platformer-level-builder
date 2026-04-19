@@ -431,6 +431,37 @@ export default function Upload() {
             🎮 Try a demo level instead
           </button>
         </motion.div>
+
+        {/* iMessage Hard Mode Bot card */}
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 1.3 }}
+          className="mt-6 rounded-2xl bg-gradient-to-br from-violet-50 to-indigo-50 border border-violet-200 p-4 shadow-sm"
+        >
+          <div className="flex items-start gap-3">
+            <div className="w-10 h-10 rounded-xl bg-violet-100 flex items-center justify-center flex-shrink-0 text-xl">
+              💬
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="font-bold text-stone-800 text-sm">Hard Mode via iMessage</p>
+              <p className="text-xs text-stone-500 mt-0.5 leading-relaxed">
+                Beat a level, then text your level ID to the bot. The AI remixes it with enemies,
+                saws, and crumbling platforms and texts you a new play link.
+              </p>
+              <div className="mt-2 flex items-center gap-2 flex-wrap">
+                <span className="inline-block bg-violet-100 text-violet-700 text-[11px] font-mono px-2 py-0.5 rounded-md">
+                  remix abc123
+                </span>
+                <span className="text-[11px] text-stone-400">or paste a play URL</span>
+              </div>
+              <p className="text-[11px] text-stone-400 mt-2">
+                See <span className="font-mono text-violet-600">IMESSAGE_DEMO.md</span> to start the bot.
+              </p>
+            </div>
+          </div>
+        </motion.div>
+
         </motion.div>
       </div>
     </div>
