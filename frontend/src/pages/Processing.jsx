@@ -122,7 +122,7 @@ export default function Processing() {
         try {
           res = await fetch(`${API}/upload`, { method: 'POST', body: form })
         } catch {
-          throw new Error('Cannot reach the backend. Make sure the server is running on port 3000.')
+          throw new Error('Cannot reach the backend. The server may be starting up — please try again in a moment.')
         }
         const text = await res.text()
         if (!text) throw new Error('Backend returned an empty response. Check that the server is running.')
