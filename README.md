@@ -1,123 +1,138 @@
-# Platformer Level Builder
+# HopIt
 
 Turn a hand-drawn sketch into a playable platformer level in seconds — powered by Gemini Vision AI.
-
-![workflow: sketch → photo → play](https://img.shields.io/badge/workflow-sketch%20→%20photo%20→%20play-orange)
 
 ## What it does
 
 1. **Sketch** a platformer level on grid paper using simple symbols
-2. **Upload** a photo of your sketch (or capture it with your camera)
-3. **Gemini 2.5 Flash** detects platforms, spikes, coins, goal, and player spawn from the image
+2. **Upload** a photo or capture it with your camera
+3. **Gemini 2.5 Flash** reads platforms, spikes, coins, goal, and spawn from the image
 4. **Play** the generated level instantly in the browser
-5. **Edit** the level live — add or remove tiles directly on the canvas
-6. **Analyze** with K2 Think AI to check solvability and get design suggestions
+5. **Edit** live — paint and erase tiles directly on the canvas
+6. **Verify** with K2 Think AI for solvability analysis and design suggestions
+7. **Hard Mode** — Gemini remixes your level with walkers, saws, crumble tiles, and more
 
-## Symbols for sketching
+## Drawing symbols
 
-| Symbol | Meaning |
-|--------|---------|
-| Filled square | Platform tile |
-| Triangle | Spike (instant death) |
-| Circle | Coin (collectible) |
-| Star | Goal (finish line) |
-| Dot / mark | Player spawn point |
-
-## Getting started
-
-### Prerequisites
-
-- Node.js 18+
-- A [Gemini API key](https://aistudio.google.com/app/apikey)
-- A K2 Think API key (optional — needed for solvability analysis)
-
-### Setup
-
-```bash
-# 1. Install backend dependencies
-npm install
-
-# 2. Install frontend dependencies
-cd frontend && npm install && cd ..
-
-# 3. Create .env in the project root
-cp .env.example .env
-# Fill in your API keys (see Environment variables below)
-```
-
-### Running locally
-
-```bash
-# Terminal 1 — backend (port 3000)
-npm start
-
-# Terminal 2 — frontend dev server (port 5173)
-cd frontend && npm run dev
-```
-
-Open [http://localhost:5173](http://localhost:5173).
-
-The Vite dev server proxies `/upload` and `/verify` to the backend automatically.
-
-### Environment variables
-
-Create a `.env` file in the project root:
-
-```env
-GEMINI_API_KEY=your_gemini_api_key_here
-
-K2_API_KEY=your_k2_api_key_here
-K2_API_BASE_URL=https://api.k2think.ai/v1
-```
+| Draw this | Means |
+|-----------|-------|
+| Filled / shaded rectangle | Platform tile |
+| Triangle △ | Spike (instant death) |
+| Circle ○ | Player spawn |
+| Star ★ | Goal (finish) |
 
 ## Project structure
 
 ```
 platformer-level-builder/
-├── frontend/               # React + Vite app (port 5173)
+├── backend/                        # Node.js / Express API (port 3000)
+│   ├── server.js                   # 3 API routes: /upload /verify /api/levels/hard-mode
+│   ├── index.js                    # CLI: node index.js <image>
+│   ├── .env                        # API keys (never committed)
+│   ├── .env.example                # Key reference
+│   ├── render.yaml                 # Render deployment config
 │   └── src/
-│       ├── App.jsx
-│       └── pages/
-│           ├── Upload.jsx      # Photo upload / camera capture
-│           ├── Processing.jsx  # AI conversion progress
-│           └── Play.jsx        # Game canvas + live editor
-├── src/
-│   ├── geminiPipeline.js   # Gemini Vision image → level JSON
-│   ├── levelConverter.js   # Conversion orchestration
-│   ├── verificationEngine.js # K2 solvability analysis
-│   ├── imageProcessor.js   # Image preprocessing (sharp)
-│   ├── validator.js        # Grid validation
-│   └── config.js           # Grid dimensions (50×35)
-├── server.js               # Express API (port 3000)
-└── index.js                # CLI entry point
+│       ├── geminiPipeline.js       # Gemini Vision → level JSON
+│       ├── levelConverter.js       # Pipeline orchestration
+│       ├── verificationEngine.js   # BFS + K2 Think solvability stream
+│       ├── hardModeEngine.js       # Deterministic hard mode + Claude fallback
+│       ├── agents/hardModeAgent.js # Gemini hard-mode agent
+│       └── config.js               # Grid dimensions (50×35)
+└── frontend/                       # React + Vite app (port 5173)
+    ├── vite.config.js              # Dev proxy → localhost:3000
+    ├── vercel.json                 # SPA rewrite for Vercel
+    └── src/
+        ├── pages/
+        │   ├── Upload.jsx          # Upload, camera, demo picker
+        │   ├── Processing.jsx      # Upload progress + spinner
+        │   └── Play.jsx            # Full game engine (canvas, physics, AI, editor)
+        ├── data/demoLevels.js      # 5 built-in demo levels
+        └── components/bits/        # Aurora, SplitText, StarBorder
 ```
 
-## Level format
+## Local development
 
-Levels are stored in `localStorage` as JSON and use a 50-column × 35-row grid:
+### Prerequisites
 
-```json
-{
-  "width": 50,
-  "height": 35,
-  "data": [
-    [0, 1, 1, "S", "C", "G", "P", ...]
-  ],
-  "playerStart": { "row": 26, "col": 4 },
-  "goal":        { "row": 16, "col": 20 }
-}
+- Node.js 18+
+- [Gemini API key](https://aistudio.google.com/app/apikey)
+- K2 Think API key (optional — for solvability analysis)
+- Anthropic API key (optional — Claude Haiku hard-mode fallback)
+
+### Setup
+
+```bash
+# Backend
+cd backend
+cp .env.example .env      # fill in your API keys
+npm install
+node server.js            # runs on port 3000
+
+# Frontend (separate terminal)
+cd frontend
+npm install
+npm run dev               # runs on port 5173
 ```
+
+Open [http://localhost:5173](http://localhost:5173). The Vite dev server proxies `/upload`, `/verify`, and `/api` to the backend automatically.
+
+### Backend environment variables (`backend/.env`)
+
+```env
+GEMINI_API_KEY=           # required — image → level conversion
+K2_API_KEY=               # optional — solvability verification
+K2_API_BASE_URL=https://api.k2think.ai/v1
+ANTHROPIC_API_KEY=        # optional — Claude Haiku hard-mode fallback
+FRONTEND_URL=             # production only — your Vercel URL (for CORS)
+```
+
+## Deployment
+
+**Frontend → Vercel**
+
+| Setting | Value |
+|---------|-------|
+| Root directory | `frontend` |
+| Build command | `npm run build` |
+| Output directory | `dist` |
+| Env variable | `VITE_API_URL` = your Render backend URL |
+
+**Backend → Render**
+
+| Setting | Value |
+|---------|-------|
+| Root directory | `backend` |
+| Build command | `npm install` |
+| Start command | `node server.js` |
+| Env variables | Same as `backend/.env.example` + `FRONTEND_URL` = your Vercel URL |
+
+> Deploy Render first → copy its URL → paste into Vercel's `VITE_API_URL` → deploy Vercel → copy its URL → paste into Render's `FRONTEND_URL` → redeploy Render.
+
+## API
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/upload` | Multipart image → level JSON |
+| `POST` | `/verify` | SSE stream — BFS + K2 Think solvability verdict |
+| `POST` | `/api/levels/hard-mode` | Gemini hard-mode remix (deterministic fallback) |
+
+## Tile reference
 
 | Value | Tile |
 |-------|------|
-| `0` | Empty |
-| `1` / `"T"` | Platform |
+| `0` / `""` | Empty |
+| `"T"` / `1` | Platform |
 | `"S"` | Spike |
 | `"C"` | Coin |
 | `"G"` | Goal |
 | `"P"` | Player spawn |
+| `"W"` | Walker enemy |
+| `"F"` | Flyer enemy |
+| `"Z"` | Saw blade |
+| `"B"` | Crumble platform |
+| `"J"` | Spring |
 
-## In-game controls
+## Controls
 
 | Key | Action |
 |-----|--------|
@@ -125,27 +140,12 @@ Levels are stored in `localStorage` as JSON and use a 50-column × 35-row grid:
 | Space / Up / W | Jump |
 | R | Respawn |
 
-## Live editor
-
-Click the **✏ EDIT** button in the top bar to enter edit mode:
-
-- **Click or drag** on the canvas to paint tiles
-- **Right-click** to erase
-- **Ctrl+Z** to undo (up to 50 steps)
-- Select a tool from the left panel: Platform, Spike, Coin, Goal, Spawn Point, Eraser
-- Click **Save & Play** to save and restart the level, or **Cancel** to discard changes
-
-## API endpoints
-
-| Method | Path | Description |
-|--------|------|-------------|
-| `POST` | `/upload` | Upload an image; returns level JSON |
-| `POST` | `/verify` | Stream K2 solvability analysis (SSE) |
+**Edit mode** (click ✏ EDIT): click/drag to paint, right-click to erase, Ctrl+Z to undo.
 
 ## Tech stack
 
-**Frontend** — React 19, Vite, Tailwind CSS 4, Framer Motion, HTML5 Canvas
+**Frontend** — React 19, Vite 8, Tailwind CSS 4, Framer Motion, HTML5 Canvas
 
-**Backend** — Node.js, Express, Multer, Sharp
+**Backend** — Node.js, Express 5, Multer, Sharp
 
-**AI** — Gemini 2.5 Flash (image → level), K2 Think V2 (solvability reasoning)
+**AI** — Gemini 2.5 Flash (vision + hard mode), K2 Think V2 (solvability), Claude Haiku (fallback)

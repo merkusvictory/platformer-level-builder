@@ -286,7 +286,7 @@ export default function Upload() {
       {/* Hero */}
       <div className="relative z-10 text-center max-w-2xl w-full">
 <h1 className="text-5xl sm:text-6xl font-black text-stone-800 leading-tight mb-4 tracking-tight">
-          <SplitText text="Sketch a Level." className="block" />
+          <SplitText text="HopIt." className="block" />
           <span className="block text-orange-500">
             <SplitText text="Play It." />
           </span>
