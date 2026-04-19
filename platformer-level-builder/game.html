@@ -1,0 +1,1902 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Platformer Level Builder</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      background: #0e0e14;
+      height: 100vh;
+      overflow: hidden;
+      font-family: 'Courier New', monospace;
+      color: #c9d1d9;
+    }
+
+    /* ── Four-column grid ── */
+    #app {
+      display: grid;
+      grid-template-columns: 260px 220px 1fr 340px;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    /* ── Shared sidebar ── */
+    .sidebar {
+      background: #13131f;
+      display: flex;
+      flex-direction: column;
+      padding: 18px 14px;
+      gap: 14px;
+      overflow-y: auto;
+      border-right: 1px solid #1e1e2e;
+    }
+    .sidebar-right {
+      border-right: none;
+      border-left: 1px solid #1e1e2e;
+    }
+
+    .sidebar-title {
+      font-size: 10px;
+      font-weight: bold;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: #7aa2f7;
+      padding-bottom: 10px;
+      border-bottom: 1px solid #1e1e2e;
+      flex-shrink: 0;
+    }
+
+    /* ── Upload zone ── */
+    #upload-zone {
+      border: 2px dashed #2a2a4a;
+      border-radius: 8px;
+      overflow: hidden;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color 0.2s, background 0.2s;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      flex-shrink: 0;
+      min-height: 90px;
+      position: relative;
+    }
+    #upload-zone:hover,
+    #upload-zone.drag-over {
+      border-color: #7aa2f7;
+      background: rgba(122,162,247,0.05);
+    }
+    #zone-default { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 18px 10px; }
+    #upload-zone .zone-icon { font-size: 26px; }
+    #upload-zone .zone-hint { font-size: 10px; color: #4a4a6a; }
+    #zone-preview {
+      display: none;
+      width: 100%;
+      height: 130px;
+      object-fit: contain;
+      background: #0a0a14;
+      padding: 4px;
+    }
+    #zone-preview-label {
+      display: none;
+      position: absolute;
+      bottom: 0; left: 0; right: 0;
+      background: rgba(10,10,20,0.75);
+      font-size: 9px;
+      color: #7aa2f7;
+      padding: 3px 6px;
+      text-align: center;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    #imageInput { display: none; }
+
+    /* TAKE PHOTO hover button inside upload zone */
+    #take-photo-btn {
+      display: none;
+      position: absolute;
+      inset: 0;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 5px;
+      background: rgba(10,10,20,0.82);
+      color: #7aa2f7;
+      font-family: 'Courier New', monospace;
+      font-size: 11px;
+      font-weight: bold;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      border: none;
+      cursor: pointer;
+      z-index: 3;
+      border-radius: 6px;
+    }
+    #take-photo-btn .cam-icon { font-size: 22px; }
+    #upload-zone:hover #take-photo-btn { display: flex; }
+
+    /* Webcam viewfinder */
+    #webcam-view {
+      display: none;
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      border-radius: 4px;
+      z-index: 8;
+    }
+    #webcam-view.active { display: block; }
+
+    /* SNAP button */
+    #snap-btn {
+      display: none;
+      position: absolute;
+      bottom: 22px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 9;
+      padding: 11px 32px;
+      background: rgba(122,162,247,0.92);
+      color: #0e0e14;
+      font-family: 'Courier New', monospace;
+      font-size: 14px;
+      font-weight: bold;
+      letter-spacing: 0.14em;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      text-transform: uppercase;
+      transition: background 0.15s, transform 0.1s;
+    }
+    #snap-btn:hover  { background: #9ab8ff; }
+    #snap-btn:active { transform: translateX(-50%) scale(0.97); }
+    #snap-btn.active { display: block; }
+
+    /* ── CREATE button ── */
+    #createBtn {
+      margin-top: auto;
+      padding: 13px;
+      background: #7aa2f7;
+      color: #0e0e14;
+      font-family: 'Courier New', monospace;
+      font-size: 14px;
+      font-weight: bold;
+      letter-spacing: 0.14em;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      text-transform: uppercase;
+      transition: background 0.15s, transform 0.1s;
+      flex-shrink: 0;
+    }
+    #createBtn:hover   { background: #9ab8ff; }
+    #createBtn:active  { transform: scale(0.98); }
+    #createBtn:disabled { background: #252540; color: #444; cursor: default; }
+
+    /* ── HARD MODE button ── */
+    #hardModeBtn {
+      padding: 13px;
+      background: #1a0a0a;
+      color: #ef4444;
+      font-family: 'Courier New', monospace;
+      font-size: 13px;
+      font-weight: bold;
+      letter-spacing: 0.14em;
+      border: 1px solid #7f1d1d;
+      border-radius: 8px;
+      cursor: pointer;
+      text-transform: uppercase;
+      transition: background 0.15s, transform 0.1s;
+      flex-shrink: 0;
+    }
+    #hardModeBtn:hover:not(:disabled) { background: #2d0f0f; }
+    #hardModeBtn:active { transform: scale(0.98); }
+    #hardModeBtn:disabled { opacity: 0.35; cursor: default; }
+    #hardModeBtn.active { background: #2d0000; border-color: #ef4444; }
+
+    /* ── Physics sidebar sliders ── */
+    .sliders-wrap {
+      display: flex;
+      flex-direction: column;
+      gap: 11px;
+      flex-shrink: 0;
+    }
+
+    .slider-row { display: flex; flex-direction: column; gap: 4px; }
+
+    .slider-label {
+      display: flex;
+      justify-content: space-between;
+      font-size: 10px;
+      color: #6b7280;
+    }
+    .slider-label .slider-val {
+      color: #e2e8f0;
+      font-weight: bold;
+      min-width: 38px;
+      text-align: right;
+    }
+
+    input[type=range] {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 100%;
+      height: 3px;
+      background: #2a2a4a;
+      border-radius: 2px;
+      outline: none;
+      cursor: pointer;
+    }
+    input[type=range]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 13px; height: 13px;
+      border-radius: 50%;
+      background: #f7a27a;
+      cursor: pointer;
+    }
+    input[type=range]::-moz-range-thumb {
+      width: 13px; height: 13px;
+      border-radius: 50%;
+      background: #f7a27a;
+      border: none;
+      cursor: pointer;
+    }
+
+    /* UPDATE button */
+    #updatePhysicsBtn {
+      margin-top: auto;
+      padding: 13px;
+      background: #1f1a0c;
+      color: #f7a27a;
+      font-family: 'Courier New', monospace;
+      font-size: 13px;
+      font-weight: bold;
+      letter-spacing: 0.14em;
+      border: 1px solid #6b3a1a;
+      border-radius: 8px;
+      cursor: pointer;
+      text-transform: uppercase;
+      transition: background 0.15s, transform 0.1s;
+      flex-shrink: 0;
+    }
+    #updatePhysicsBtn:hover:not(:disabled) { background: #2e2008; }
+    #updatePhysicsBtn:active { transform: scale(0.98); }
+    #updatePhysicsBtn:disabled { opacity: 0.35; cursor: default; }
+
+    /* ── Center column ── */
+    #center-col {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background: #0e0e14;
+      padding: 16px;
+      overflow: hidden;
+      gap: 10px;
+    }
+
+    #canvas-wrapper {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 1020 / 720;
+      max-height: calc(100vh - 70px);
+    }
+
+    #gameCanvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      border: 1px solid #2a2a4a;
+      border-radius: 4px;
+      image-rendering: pixelated;
+    }
+
+    /* Loading overlay */
+    #loading-overlay {
+      display: none;
+      position: absolute;
+      inset: 0;
+      background: rgba(10, 10, 18, 0.88);
+      border-radius: 4px;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 14px;
+      z-index: 10;
+    }
+    #loading-overlay.active { display: flex; }
+    .spinner {
+      width: 34px; height: 34px;
+      border: 3px solid #1e1e2e;
+      border-top-color: #7aa2f7;
+      border-radius: 50%;
+      animation: spin 0.75s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .loading-label { font-size: 12px; color: #7aa2f7; letter-spacing: 0.1em; }
+
+    #hud {
+      font-size: 10px;
+      color: #6b7280;
+      letter-spacing: 0.05em;
+      flex-shrink: 0;
+    }
+
+    /* ── Right sidebar internals ── */
+    .section-label {
+      font-size: 10px;
+      font-weight: bold;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: #9ca3af;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-shrink: 0;
+    }
+
+    /* Warnings box */
+    #warnings-box {
+      background: #0a0a14;
+      border: 1px solid #1e1e2e;
+      border-radius: 6px;
+      padding: 10px 12px;
+      font-size: 11px;
+      min-height: 56px;
+      flex-shrink: 0;
+    }
+    .awaiting-hint { color: #2a2a4a; font-style: italic; font-size: 10px; }
+
+    #verdict { padding: 7px 9px; border-radius: 4px; font-size: 11px; display: none; }
+    #verdict.solvable   { background: #0d2b1a; border: 1px solid #22c55e; color: #4ade80; }
+    #verdict.unsolvable { background: #2b0d0d; border: 1px solid #ef4444; color: #f87171; }
+    #verdict.error      { background: #2b1d0d; border: 1px solid #f59e0b; color: #fbbf24; }
+    #verdict-icon   { font-size: 14px; margin-right: 4px; }
+    #verdict-label  { font-weight: bold; }
+    #verdict-proof  { margin-top: 4px; font-size: 10px; color: #aaa; line-height: 1.5; }
+
+    #bottlenecks-section { display: none; margin-top: 8px; }
+    #bottlenecks-section h3 { color: #f59e0b; font-size: 10px; margin-bottom: 4px; }
+    #bottleneck-list { list-style: none; display: flex; flex-direction: column; gap: 3px; }
+    #bottleneck-list li {
+      background: #1e1a00; border: 1px solid #3d3000; border-radius: 3px;
+      padding: 4px 8px; font-size: 10px; color: #fcd34d;
+    }
+    #bottleneck-list li span.coord { color: #f59e0b; font-weight: bold; margin-right: 4px; }
+
+    /* ── Thinking robot ── */
+    #robot-thinking {
+      display: none;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 10px;
+      background: #0a0a1a;
+      border: 1px solid #1e1e3a;
+      border-radius: 6px;
+      flex-shrink: 0;
+    }
+    #robot-thinking.active { display: flex; }
+    .robot-emoji {
+      font-size: 20px;
+      animation: robot-bob 0.55s ease-in-out infinite alternate;
+    }
+    @keyframes robot-bob {
+      from { transform: translateY(0px); }
+      to   { transform: translateY(-4px); }
+    }
+    .robot-message { font-size: 10px; color: #7aa2f7; flex: 1; }
+    .robot-dots { display: flex; gap: 3px; }
+    .robot-dots span {
+      width: 5px; height: 5px;
+      border-radius: 50%;
+      background: #7aa2f7;
+      animation: dot-pop 1.2s ease-in-out infinite;
+    }
+    .robot-dots span:nth-child(2) { animation-delay: 0.2s; }
+    .robot-dots span:nth-child(3) { animation-delay: 0.4s; }
+    @keyframes dot-pop {
+      0%,80%,100% { transform: scale(0.5); opacity: 0.3; }
+      40%          { transform: scale(1.1); opacity: 1; }
+    }
+
+    /* ── Challenge alert ── */
+    #challenge-alert {
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      gap: 3px;
+      padding: 10px 8px;
+      background: #200000;
+      border: 1px solid #7f1d1d;
+      border-radius: 6px;
+      text-align: center;
+      margin-bottom: 6px;
+    }
+    #challenge-alert.visible { display: flex; }
+    .challenge-icon {
+      font-size: 28px;
+      animation: alert-pulse 0.9s ease-in-out infinite;
+    }
+    @keyframes alert-pulse {
+      0%,100% { transform: scale(1); }
+      50%     { transform: scale(1.12); }
+    }
+    .challenge-title { font-size: 12px; font-weight: bold; color: #ef4444; letter-spacing: 0.1em; }
+    .challenge-sub   { font-size: 10px; color: #f87171; line-height: 1.5; margin-top: 2px; }
+
+    /* Reasoning trace */
+    #thinking-indicator {
+      display: none;
+      width: 7px; height: 7px;
+      border-radius: 50%;
+      background: #7aa2f7;
+      animation: pulse 1s ease-in-out infinite;
+    }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.2} }
+
+    #reasoning-trace {
+      background: #0a0a14;
+      border: 1px solid #1e1e2e;
+      border-radius: 6px;
+      padding: 10px;
+      font-size: 10px;
+      line-height: 1.7;
+      color: #6b7280;
+      white-space: pre-wrap;
+      overflow-y: auto;
+      flex: 1;
+      min-height: 0;
+      word-break: break-word;
+    }
+    #trace-think  { color: #3a4060; display: block; }
+    #trace-answer { color: #9ca3af; display: block; margin-top: 6px; }
+    .trace-cursor {
+      display: inline-block;
+      width: 7px; height: 11px;
+      background: #7aa2f7;
+      vertical-align: text-bottom;
+      animation: cur-blink 0.7s step-end infinite;
+    }
+    @keyframes cur-blink { 50% { opacity: 0; } }
+    #idle-hint { color: #2a2a3a; font-style: italic; }
+
+    /* Design tips toggle button */
+    #tipsBtn {
+      padding: 9px 13px;
+      background: #0c1f0c;
+      color: #4ade80;
+      font-family: 'Courier New', monospace;
+      font-size: 12px;
+      font-weight: bold;
+      letter-spacing: 0.1em;
+      border: 1px solid #166534;
+      border-radius: 8px;
+      cursor: pointer;
+      text-transform: uppercase;
+      transition: background 0.15s;
+      flex-shrink: 0;
+    }
+    #tipsBtn:hover { background: #14532d; }
+    #tipsBtn.off { background: #131313; color: #3a3a3a; border-color: #2a2a2a; }
+
+    /* Design tip tooltip */
+    #design-tooltip {
+      position: fixed;
+      display: none;
+      z-index: 200;
+      background: #10102a;
+      border: 1px solid #7aa2f7;
+      border-radius: 10px;
+      padding: 10px 14px;
+      max-width: 230px;
+      pointer-events: none;
+      box-shadow: 0 0 18px rgba(122,162,247,0.35), 0 4px 24px rgba(0,0,0,0.6);
+    }
+    .tip-problem    { font-size: 11px; font-weight: bold; color: #e2e8f0; margin-bottom: 5px; }
+    .tip-suggestion { font-size: 10px; color: #9ca3af; line-height: 1.55; }
+
+    /* Cell hover tooltip */
+    #cell-tooltip {
+      position: fixed;
+      display: none;
+      z-index: 201;
+      background: #0e1020;
+      border: 1px solid #3a3a5a;
+      border-radius: 6px;
+      padding: 5px 9px;
+      font-size: 10px;
+      color: #c9d1d9;
+      pointer-events: none;
+      font-family: 'Courier New', monospace;
+      line-height: 1.6;
+    }
+
+    /* EVALUATE button */
+    #evaluateBtn {
+      padding: 13px;
+      background: #0c1f3d;
+      color: #7aa2f7;
+      font-family: 'Courier New', monospace;
+      font-size: 13px;
+      font-weight: bold;
+      letter-spacing: 0.12em;
+      border: 1px solid #2a5a9a;
+      border-radius: 8px;
+      cursor: pointer;
+      text-transform: uppercase;
+      transition: background 0.15s, transform 0.1s;
+      flex-shrink: 0;
+    }
+    #evaluateBtn:hover:not(:disabled) { background: #1a3a6a; }
+    #evaluateBtn:active { transform: scale(0.98); }
+    #evaluateBtn:disabled { opacity: 0.35; cursor: default; }
+  </style>
+</head>
+<body>
+<div id="design-tooltip">
+  <div class="tip-problem" id="tip-problem"></div>
+  <div class="tip-suggestion" id="tip-suggestion"></div>
+</div>
+<div id="cell-tooltip"></div>
+
+<div id="app">
+
+  <!-- ══ LEFT SIDEBAR — Upload ══ -->
+  <div class="sidebar">
+    <div class="sidebar-title">Build Your Level</div>
+
+    <div id="upload-zone">
+      <div id="zone-default">
+        <span class="zone-icon">📷</span>
+        <span class="zone-hint">Click or drop your grid photo</span>
+      </div>
+      <img id="zone-preview" alt="preview">
+      <span id="zone-preview-label"></span>
+      <button id="take-photo-btn"><span class="cam-icon">📸</span>TAKE PHOTO</button>
+    </div>
+    <input type="file" id="imageInput" accept="image/*">
+
+    <button id="createBtn">▶ CREATE</button>
+    <button id="hardModeBtn" disabled>💀 HARD MODE</button>
+  </div>
+
+  <!-- ══ PHYSICS SIDEBAR ══ -->
+  <div class="sidebar">
+    <div class="sidebar-title">Physics Tuner</div>
+
+    <div class="sliders-wrap">
+      <div class="slider-row">
+        <div class="slider-label">
+          <span>Gravity</span>
+          <span class="slider-val" id="val-gravity">1800</span>
+        </div>
+        <input type="range" id="sl-gravity" min="400" max="4000" step="100" value="1800">
+      </div>
+      <div class="slider-row">
+        <div class="slider-label">
+          <span>Jump Strength</span>
+          <span class="slider-val" id="val-jump">600</span>
+        </div>
+        <input type="range" id="sl-jump" min="100" max="1400" step="50" value="600">
+      </div>
+      <div class="slider-row">
+        <div class="slider-label">
+          <span>Move Speed</span>
+          <span class="slider-val" id="val-speed">280</span>
+        </div>
+        <input type="range" id="sl-speed" min="50" max="800" step="10" value="280">
+      </div>
+      <div class="slider-row">
+        <div class="slider-label">
+          <span>Friction</span>
+          <span class="slider-val" id="val-friction">0.75</span>
+        </div>
+        <input type="range" id="sl-friction" min="0.10" max="1.00" step="0.05" value="0.75">
+      </div>
+      <div class="slider-row">
+        <div class="slider-label">
+          <span>Max Fall Speed</span>
+          <span class="slider-val" id="val-maxfall">1400</span>
+        </div>
+        <input type="range" id="sl-maxfall" min="200" max="3000" step="100" value="1400">
+      </div>
+    </div>
+
+    <button id="updatePhysicsBtn" disabled>⚙ UPDATE ANALYSIS</button>
+  </div>
+
+  <!-- ══ CENTER ══ -->
+  <div id="center-col">
+    <div id="canvas-wrapper">
+      <canvas id="gameCanvas" width="1020" height="720"></canvas>
+      <video id="webcam-view" autoplay playsinline muted></video>
+      <button id="snap-btn">📷 SNAP</button>
+      <canvas id="capture-canvas" style="display:none" width="960" height="700"></canvas>
+      <div id="loading-overlay">
+        <div class="spinner"></div>
+        <div class="loading-label">Analyzing image…</div>
+      </div>
+    </div>
+    <div id="hud">Arrow Keys / WASD — Move &nbsp;|&nbsp; Up / W / Space — Jump &nbsp;|&nbsp; R — Reset</div>
+  </div>
+
+  <!-- ══ RIGHT SIDEBAR ══ -->
+  <div class="sidebar sidebar-right">
+    <div class="sidebar-title">Can You Beat It?</div>
+
+    <div class="section-label">Result</div>
+    <div id="warnings-box">
+      <div id="challenge-alert">
+        <div class="challenge-icon">⚠️</div>
+        <div class="challenge-title">CHALLENGE ALERT!</div>
+        <div class="challenge-sub" id="kid-summary"></div>
+      </div>
+      <div id="verdict">
+        <div><span id="verdict-icon"></span><span id="verdict-label"></span></div>
+        <div id="verdict-proof"></div>
+      </div>
+      <div id="bottlenecks-section">
+        <h3>🚧 Problem Spots</h3>
+        <ul id="bottleneck-list"></ul>
+      </div>
+      <span class="awaiting-hint" id="warnings-idle">Press Check It! to find out…</span>
+    </div>
+
+    <div class="section-label">
+      How I Checked It
+      <span id="thinking-indicator"></span>
+    </div>
+    <div id="robot-thinking">
+      <span class="robot-emoji">🤖</span>
+      <span class="robot-message">Hmm, let me think about this…</span>
+      <div class="robot-dots"><span></span><span></span><span></span></div>
+    </div>
+    <div id="reasoning-trace">
+      <span id="trace-think"></span><span class="trace-cursor" id="trace-cursor" style="display:none"></span>
+      <span id="trace-answer"></span>
+      <span id="idle-hint">Press Check It! to see how I figure it out…</span>
+    </div>
+
+    <button id="tipsBtn" disabled>💡 SHOW DESIGN TIPS</button>
+    <button id="evaluateBtn" disabled>🔍 CHECK IT!</button>
+  </div>
+
+</div>
+<script>
+  // ================================================================
+  // PHYSICS — mutable so CREATE can sync slider values
+  // ================================================================
+  let GRAVITY       = 1800;
+  let JUMP_STRENGTH =  600;
+  let MOVE_SPEED    =  280;
+  let FRICTION      = 0.75;
+  let MAX_FALL      = 1400;
+  const TILE_SIZE   =   20;
+
+  // Fixed margins for row/col coordinate labels
+  const LABEL_LEFT = 24;
+  const LABEL_TOP  = 20;
+
+  // ================================================================
+  // INPUT
+  // ================================================================
+  const Input = {
+    _keys: {},
+    init() {
+      window.addEventListener('keydown', e => {
+        this._keys[e.code] = true;
+        if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space'].includes(e.code))
+          e.preventDefault();
+        if (e.code === 'KeyR' && !isLoading) spawnPlayer();
+      });
+      window.addEventListener('keyup', e => { this._keys[e.code] = false; });
+    },
+    left()  { return !!(this._keys['ArrowLeft']  || this._keys['KeyA']); },
+    right() { return !!(this._keys['ArrowRight'] || this._keys['KeyD']); },
+    jump()  { return !!(this._keys['ArrowUp']    || this._keys['KeyW'] || this._keys['Space']); },
+  };
+
+  // ================================================================
+  // LEVEL
+  // ================================================================
+  class Level {
+    constructor(grid, tileSize = TILE_SIZE) {
+      this.grid     = grid;
+      this.tileSize = tileSize;
+      this.rows     = grid.length;
+      this.cols     = grid[0]?.length ?? 0;
+      this.width    = this.cols * tileSize;
+      this.height   = this.rows * tileSize;
+    }
+
+    getTile(row, col) {
+      if (row < 0 || row >= this.rows || col < 0 || col >= this.cols) return 0;
+      return this.grid[row][col];
+    }
+
+    isSolid(row, col) {
+      const t = this.getTile(row, col);
+      return t === 1 || t === 'T' || t === 'B' || t === 'J';
+    }
+
+    findTile(type) {
+      for (let r = 0; r < this.rows; r++)
+        for (let c = 0; c < this.cols; c++)
+          if (this.grid[r][c] === type) return { row: r, col: c };
+      return null;
+    }
+
+    draw(ctx, camX, camY, bottlenecks = [], solutionPath = []) {
+      const ts = this.tileSize;
+      for (let r = 0; r < this.rows; r++) {
+        for (let c = 0; c < this.cols; c++) {
+          const tile = this.grid[r][c];
+          const x = c * ts - camX;
+          const y = r * ts - camY;
+          if      (tile === 1 || tile === 'T') this._drawPlatform(ctx, x, y, ts);
+          else if (tile === 'S') this._drawSpike(ctx, x, y, ts);
+          else if (tile === 'G') this._drawGoal(ctx, x, y, ts);
+          else if (tile === 'P') this._drawSpawn(ctx, x, y, ts);
+          else if (tile === 'B') this._drawCrumble(ctx, x, y, ts);
+          else if (tile === 'J') this._drawSpring(ctx, x, y, ts);
+          else if (tile === 'Z') this._drawSaw(ctx, x, y, ts);
+          else if (tile === 'W') this._drawWalker(ctx, x, y, ts);
+        }
+      }
+
+      // Bottleneck overlays
+      for (const b of bottlenecks) {
+        const x = b.x * ts - camX;
+        const y = b.y * ts - camY;
+        ctx.fillStyle = 'rgba(239,68,68,0.45)';
+        ctx.fillRect(x, y, ts, ts);
+        ctx.strokeStyle = '#ef4444';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(x + 1, y + 1, ts - 2, ts - 2);
+      }
+
+      // Solution path line
+      if (solutionPath.length > 1) {
+        const cx = p => p.col * ts + ts / 2 - camX;
+        const cy = p => p.row * ts + ts / 2 - camY;
+
+        ctx.save();
+        ctx.strokeStyle = 'rgba(74,222,128,0.7)';
+        ctx.lineWidth   = 3;
+        ctx.setLineDash([6, 4]);
+        ctx.beginPath();
+        ctx.moveTo(cx(solutionPath[0]), cy(solutionPath[0]));
+        for (let i = 1; i < solutionPath.length; i++)
+          ctx.lineTo(cx(solutionPath[i]), cy(solutionPath[i]));
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        ctx.fillStyle = 'rgba(74,222,128,0.9)';
+        for (const p of solutionPath) {
+          ctx.beginPath();
+          ctx.arc(cx(p), cy(p), 4, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.restore();
+      }
+    }
+
+    _drawPlatform(ctx, x, y, ts) {
+      ctx.fillStyle = '#000';
+      ctx.fillRect(x, y, ts, ts);
+    }
+
+    _drawSpike(ctx, x, y, ts) {
+      ctx.fillStyle = '#000';
+      ctx.beginPath();
+      ctx.moveTo(x + ts / 2, y);
+      ctx.lineTo(x + ts, y + ts);
+      ctx.lineTo(x, y + ts);
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    _drawGoal(ctx, x, y, ts) {
+      ctx.fillStyle = '#000';
+      ctx.font = `${ts}px monospace`;
+      ctx.textAlign = 'center';
+      ctx.fillText('★', x + ts / 2, y + ts - 2);
+    }
+
+    _drawSpawn(ctx, x, y, ts) {}
+
+    _drawCrumble(ctx, x, y, ts) {
+      ctx.fillStyle = '#8B4513';
+      ctx.fillRect(x, y, ts, ts);
+      ctx.strokeStyle = '#5c2d0a';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([3, 2]);
+      ctx.strokeRect(x + 1, y + 1, ts - 2, ts - 2);
+      ctx.setLineDash([]);
+    }
+
+    _drawSpring(ctx, x, y, ts) {
+      ctx.fillStyle = '#1e1e2e';
+      ctx.fillRect(x, y, ts, ts);
+      ctx.fillStyle = '#f7a27a';
+      const cx = x + ts / 2, bot = y + ts, top = y + ts * 0.3;
+      ctx.beginPath();
+      ctx.moveTo(cx - ts * 0.35, bot);
+      ctx.lineTo(cx + ts * 0.35, bot);
+      ctx.lineTo(cx + ts * 0.2, top);
+      ctx.lineTo(cx - ts * 0.2, top);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = '#fbbf24';
+      ctx.fillRect(cx - ts * 0.25, top - ts * 0.1, ts * 0.5, ts * 0.1);
+    }
+
+    _drawSaw(ctx, x, y, ts) {
+      const t = performance.now() / 300;
+      const cx = x + ts / 2, cy = y + ts / 2, r = ts * 0.42;
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.rotate(t);
+      ctx.fillStyle = '#c0c0c0';
+      const teeth = 8;
+      ctx.beginPath();
+      for (let i = 0; i < teeth; i++) {
+        const a1 = (i / teeth) * Math.PI * 2;
+        const a2 = ((i + 0.5) / teeth) * Math.PI * 2;
+        ctx.lineTo(Math.cos(a1) * r, Math.sin(a1) * r);
+        ctx.lineTo(Math.cos(a2) * r * 0.65, Math.sin(a2) * r * 0.65);
+      }
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = '#888';
+      ctx.beginPath();
+      ctx.arc(0, 0, r * 0.25, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    _drawWalker(ctx, x, y, ts) {
+      ctx.fillStyle = '#a855f7';
+      const bx = x + ts * 0.15, by = y + ts * 0.1, bw = ts * 0.7, bh = ts * 0.6;
+      ctx.fillRect(bx, by, bw, bh);
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(bx + bw * 0.15, by + bh * 0.2, bw * 0.25, bh * 0.3);
+      ctx.fillRect(bx + bw * 0.6,  by + bh * 0.2, bw * 0.25, bh * 0.3);
+      ctx.fillStyle = '#1e0a2e';
+      ctx.fillRect(bx + bw * 0.2,  by + bh * 0.25, bw * 0.15, bh * 0.2);
+      ctx.fillRect(bx + bw * 0.65, by + bh * 0.25, bw * 0.15, bh * 0.2);
+      ctx.fillStyle = '#a855f7';
+      ctx.fillRect(bx + bw * 0.1,  by + bh, bw * 0.2, bh * 0.35);
+      ctx.fillRect(bx + bw * 0.7,  by + bh, bw * 0.2, bh * 0.35);
+    }
+  }
+
+  // ================================================================
+  // ENTITY (PLAYER)
+  // ================================================================
+  class Entity {
+    constructor(x, y, w, h) {
+      this.x = x; this.y = y;
+      this.vx = 0; this.vy = 0;
+      this.w = w; this.h = h;
+      this.onGround = false;
+    }
+
+    update(dt, level) {
+      const hSpeed = this.onGround ? MOVE_SPEED : MOVE_SPEED / Math.SQRT2;
+      if (Input.left())  this.vx = -hSpeed;
+      if (Input.right()) this.vx =  hSpeed;
+      if (!Input.left() && !Input.right()) {
+        this.vx *= FRICTION;
+        if (Math.abs(this.vx) < 0.5) this.vx = 0;
+      }
+
+      if (Input.jump() && this.onGround) {
+        this.vy = -JUMP_STRENGTH;
+        this.onGround = false;
+      }
+
+      this.vy = Math.min(this.vy + GRAVITY * dt, MAX_FALL);
+
+      this.x += this.vx * dt;
+      this._resolveX(level);
+      this.onGround = false;
+      this.y += this.vy * dt;
+      this._resolveY(level);
+    }
+
+    _resolveX(level) {
+      const ts = level.tileSize;
+      const left   = Math.floor(this.x / ts);
+      const right  = Math.floor((this.x + this.w - 1) / ts);
+      const top    = Math.floor(this.y / ts);
+      const bottom = Math.floor((this.y + this.h - 1) / ts);
+      for (let r = top; r <= bottom; r++) {
+        if (this.vx > 0 && level.isSolid(r, right)) { this.x = right * ts - this.w; this.vx = 0; }
+        if (this.vx < 0 && level.isSolid(r, left))  { this.x = (left + 1) * ts;     this.vx = 0; }
+      }
+    }
+
+    _resolveY(level) {
+      const ts = level.tileSize;
+      const left   = Math.floor(this.x / ts);
+      const right  = Math.floor((this.x + this.w - 1) / ts);
+      const top    = Math.floor(this.y / ts);
+      const bottom = Math.floor((this.y + this.h - 1) / ts);
+      for (let c = left; c <= right; c++) {
+        if (this.vy > 0 && level.isSolid(bottom, c)) { this.y = bottom * ts - this.h; this.vy = 0; this.onGround = true; }
+        if (this.vy < 0 && level.isSolid(top,    c)) { this.y = (top + 1) * ts;       this.vy = 0; }
+      }
+    }
+
+    draw(ctx, camX, camY) {
+      ctx.fillStyle = '#f00';
+      ctx.fillRect(this.x - camX, this.y - camY, this.w, this.h);
+    }
+  }
+
+  // ================================================================
+  // GAME STATE
+  // ================================================================
+  const canvas = document.getElementById('gameCanvas');
+  const ctx    = canvas.getContext('2d');
+
+  let level             = null;
+  let player            = null;
+  let state             = 'playing';
+  let spawnX            = 0;
+  let spawnY            = 0;
+  let offsetX           = LABEL_LEFT;
+  let offsetY           = LABEL_TOP;
+  let currentGrid       = null;
+  let baseGrid          = null;   // original grid before hard mode
+  let hardModeActive    = false;
+  let activeBottlenecks      = [];
+  let activeSolutionPath     = [];
+  let activeDesignSuggestions = [];
+  let activeSuggestedSpawn   = null;
+  let activeSuggestedGoal    = null;
+  let showDesignTips         = false;
+  let isLoading              = false;
+  let pendingFile            = null;
+
+  // Hard-mode runtime entities
+  let walkers    = [];   // { x, y, vx, w, h, dir }
+  let crumbles   = [];   // { row, col, timer, falling }
+
+  function initHardModeEntities(grid) {
+    walkers  = [];
+    crumbles = [];
+    if (!grid) return;
+    const ts = TILE_SIZE;
+    for (let r = 0; r < grid.length; r++) {
+      for (let c = 0; c < grid[r].length; c++) {
+        const t = grid[r][c];
+        if (t === 'W') {
+          walkers.push({ x: c * ts, y: r * ts, vx: 60, w: ts * 0.7, h: ts * 0.95 });
+        }
+        if (t === 'B') {
+          crumbles.push({ row: r, col: c, timer: -1, falling: false, fallY: r * ts, fallVy: 0 });
+        }
+      }
+    }
+  }
+
+  function updateWalkers(dt) {
+    if (!level) return;
+    const ts = level.tileSize;
+    for (const w of walkers) {
+      if (!w.vy) w.vy = 0;
+      // horizontal movement
+      w.x += w.vx * dt;
+      const ahead = w.vx > 0 ? Math.floor((w.x + w.w) / ts) : Math.floor(w.x / ts);
+      const feetRow = Math.floor((w.y + w.h) / ts);
+      if (level.isSolid(feetRow, ahead)) { w.vx = -w.vx; w.x += w.vx * dt * 2; }
+
+      // gravity
+      w.vy = Math.min((w.vy || 0) + GRAVITY * dt, MAX_FALL);
+      w.y += w.vy * dt;
+      const newFeetRow = Math.floor((w.y + w.h) / ts);
+      const midCol     = Math.floor((w.x + w.w / 2) / ts);
+      if (w.vy > 0 && level.isSolid(newFeetRow, midCol)) {
+        w.y  = newFeetRow * ts - w.h;
+        w.vy = 0;
+      }
+      // reverse at platform edges
+      const groundCol  = Math.floor((w.x + w.w / 2 + (w.vx > 0 ? w.w * 0.5 : -w.w * 0.5)) / ts);
+      const groundRow  = Math.floor((w.y + w.h + 1) / ts);
+      if (!level.isSolid(groundRow, groundCol)) w.vx = -w.vx;
+
+      // kill player on contact
+      if (player && state === 'playing') {
+        if (player.x < w.x + w.w && player.x + player.w > w.x &&
+            player.y < w.y + w.h && player.y + player.h > w.y) {
+          state = 'dead';
+        }
+      }
+    }
+  }
+
+  function updateCrumbles(dt) {
+    if (!level) return;
+    const ts = level.tileSize;
+    for (const c of crumbles) {
+      if (c.falling) {
+        c.fallVy += GRAVITY * dt;
+        c.fallY  += c.fallVy * dt;
+        continue;
+      }
+      // check if player is standing on this tile
+      if (player && state === 'playing') {
+        const pr = Math.floor((player.y + player.h) / ts);
+        const pc0 = Math.floor(player.x / ts);
+        const pc1 = Math.floor((player.x + player.w - 1) / ts);
+        if (pr === c.row && pc0 <= c.col && pc1 >= c.col) {
+          if (c.timer < 0) c.timer = 0;
+        }
+      }
+      if (c.timer >= 0) {
+        c.timer += dt;
+        if (c.timer > 0.55) {
+          // start falling, remove from grid
+          level.grid[c.row][c.col] = 0;
+          c.falling = true;
+          c.fallY   = c.row * ts;
+          c.fallVy  = 0;
+        }
+      }
+    }
+  }
+
+  function drawWalkers() {
+    if (!level) return;
+    const ts = level.tileSize;
+    for (const w of walkers) {
+      ctx.save();
+      if (w.vx < 0) {
+        ctx.translate(offsetX + w.x + w.w, offsetY + w.y);
+        ctx.scale(-1, 1);
+        level._drawWalker(ctx, 0, 0, ts);
+      } else {
+        level._drawWalker(ctx, offsetX + w.x, offsetY + w.y, ts);
+      }
+      ctx.restore();
+    }
+  }
+
+  function drawCrumbles() {
+    if (!level) return;
+    const ts = level.tileSize;
+    for (const c of crumbles) {
+      if (!c.falling) continue;
+      const x = offsetX + c.col * ts;
+      const y = offsetY + c.fallY;
+      if (y > canvas.height + ts) continue;
+      level._drawCrumble(ctx, x, y, ts);
+    }
+  }
+
+  function checkSpringBoost() {
+    if (!player || !level || state !== 'playing') return;
+    const ts = level.tileSize;
+    const r  = Math.floor((player.y + player.h) / ts);
+    const c0 = Math.floor(player.x / ts);
+    const c1 = Math.floor((player.x + player.w - 1) / ts);
+    for (let c = c0; c <= c1; c++) {
+      if (level.getTile(r, c) === 'J' && player.onGround) {
+        player.vy = -JUMP_STRENGTH * 1.9;
+        player.onGround = false;
+        return;
+      }
+    }
+  }
+
+  function checkSawDeath() {
+    if (!player || !level || state !== 'playing') return;
+    const ts = level.tileSize;
+    const r0 = Math.floor(player.y / ts);
+    const r1 = Math.floor((player.y + player.h - 1) / ts);
+    const c0 = Math.floor(player.x / ts);
+    const c1 = Math.floor((player.x + player.w - 1) / ts);
+    for (let r = r0; r <= r1; r++) {
+      for (let c = c0; c <= c1; c++) {
+        if (level.getTile(r, c) === 'Z') { state = 'dead'; return; }
+      }
+    }
+  }
+
+  function setLoading(on) {
+    isLoading = on;
+    document.getElementById('loading-overlay').classList.toggle('active', on);
+    document.getElementById('createBtn').disabled = on;
+  }
+
+  function spawnPlayer() {
+    if (!level) return;
+    const ts = level.tileSize;
+    player = new Entity(spawnX, spawnY, ts * 0.75, ts * 0.9);
+    state  = 'playing';
+    if (hardModeActive && currentGrid) {
+      // restore crumbled tiles and reset walkers
+      level.grid = currentGrid.map(r => r.slice());
+      initHardModeEntities(currentGrid);
+    }
+  }
+
+  function loadGeneratedLevel(jsonGrid, isHard = false) {
+    const ts   = TILE_SIZE;
+    currentGrid = jsonGrid.map(r => r.slice());
+    if (!isHard) baseGrid = currentGrid.map(r => r.slice());
+    activeBottlenecks       = [];
+    activeSolutionPath      = [];
+    activeDesignSuggestions = [];
+    activeSuggestedSpawn    = null;
+    activeSuggestedGoal     = null;
+    hardModeActive          = isHard;
+    level   = new Level(currentGrid.map(r => r.slice()), ts);
+    state   = 'playing';
+    offsetX = LABEL_LEFT;
+    offsetY = LABEL_TOP;
+
+    initHardModeEntities(isHard ? currentGrid : null);
+
+    const spawn = level.findTile('P');
+    spawnX = spawn ? spawn.col * ts : ts;
+    spawnY = spawn ? spawn.row * ts : ts;
+
+    spawnPlayer();
+    document.getElementById('evaluateBtn').disabled    = false;
+    document.getElementById('updatePhysicsBtn').disabled = false;
+    document.getElementById('hardModeBtn').disabled    = false;
+    document.getElementById('hardModeBtn').classList.toggle('active', isHard);
+    document.getElementById('hardModeBtn').textContent = isHard ? '💀 EXIT HARD MODE' : '💀 HARD MODE';
+    const _tb = document.getElementById('tipsBtn');
+    _tb.disabled    = true;
+    _tb.textContent = '💡 SHOW DESIGN TIPS';
+    _tb.classList.add('off');
+    showDesignTips  = false;
+    resetSidebar();
+  }
+
+  // ================================================================
+  // EDUCATION LAYER
+  // ================================================================
+  function drawDesignSuggestions(suggestionsArray) {
+    if (!showDesignTips || !level) return;
+    const ts = level.tileSize;
+
+    if (activeSuggestedSpawn) {
+      const gx = offsetX + activeSuggestedSpawn.col * ts;
+      const gy = offsetY + activeSuggestedSpawn.row * ts;
+      ctx.save();
+      ctx.setLineDash([4, 4]);
+      ctx.strokeStyle = 'rgba(74,222,128,0.7)';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(gx + ts * 0.125, gy + ts * 0.05, ts * 0.75, ts * 0.9);
+      ctx.fillStyle = 'rgba(74,222,128,0.12)';
+      ctx.fillRect(gx + ts * 0.125, gy + ts * 0.05, ts * 0.75, ts * 0.9);
+      ctx.setLineDash([]);
+      ctx.fillStyle = 'rgba(74,222,128,0.5)';
+      ctx.font = `bold ${Math.max(7, Math.round(ts * 0.38))}px monospace`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('P?', gx + ts / 2, gy + ts / 2);
+      ctx.restore();
+    }
+
+    if (activeSuggestedGoal) {
+      const gx = offsetX + activeSuggestedGoal.col * ts;
+      const gy = offsetY + activeSuggestedGoal.row * ts;
+      ctx.save();
+      ctx.setLineDash([4, 4]);
+      ctx.strokeStyle = 'rgba(251,191,36,0.7)';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(gx + 1, gy + 1, ts - 2, ts - 2);
+      ctx.fillStyle = 'rgba(251,191,36,0.1)';
+      ctx.fillRect(gx + 1, gy + 1, ts - 2, ts - 2);
+      ctx.setLineDash([]);
+      ctx.fillStyle = 'rgba(251,191,36,0.5)';
+      ctx.font = `${Math.round(ts * 0.7)}px monospace`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('★', gx + ts / 2, gy + ts / 2);
+      ctx.restore();
+    }
+
+    for (const s of suggestionsArray) {
+      const cx = offsetX + s.x * ts + ts / 2;
+      const cy = offsetY + s.y * ts + ts / 2;
+      ctx.save();
+      ctx.shadowColor = '#7aa2f7';
+      ctx.shadowBlur  = 14;
+      ctx.fillStyle   = 'rgba(122,162,247,0.9)';
+      ctx.beginPath();
+      ctx.arc(cx, cy, Math.max(6, ts * 0.28), 0, Math.PI * 2);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+      ctx.fillStyle  = '#0e0e14';
+      ctx.font       = `bold ${Math.max(8, Math.round(ts * 0.34))}px monospace`;
+      ctx.textAlign  = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('?', cx, cy);
+      ctx.restore();
+    }
+  }
+
+  // ================================================================
+  // CANVAS HOVER TOOLTIP (cell coordinates + tile type)
+  // ================================================================
+  const _cellTooltip = document.getElementById('cell-tooltip');
+  const _designTooltip = document.getElementById('design-tooltip');
+
+  const TILE_NAMES = { 0: 'empty', 1: 'platform', S: 'spike', G: 'goal', P: 'spawn' };
+
+  canvas.addEventListener('mousemove', e => {
+    const rect   = canvas.getBoundingClientRect();
+    const scaleX = canvas.width  / rect.width;
+    const scaleY = canvas.height / rect.height;
+    const mx = (e.clientX - rect.left) * scaleX;
+    const my = (e.clientY - rect.top)  * scaleY;
+
+    // Design tip '?' hover check (takes priority)
+    if (showDesignTips && level && activeDesignSuggestions.length > 0) {
+      const ts = level.tileSize;
+      const r  = Math.max(6, ts * 0.28);
+      for (const s of activeDesignSuggestions) {
+        const cx = offsetX + s.x * ts + ts / 2;
+        const cy = offsetY + s.y * ts + ts / 2;
+        if (Math.hypot(mx - cx, my - cy) <= r + 4) {
+          document.getElementById('tip-problem').textContent    = s.problem;
+          document.getElementById('tip-suggestion').textContent = s.suggestion;
+          _designTooltip.style.display = 'block';
+          positionTooltip(_designTooltip, e.clientX, e.clientY);
+          _cellTooltip.style.display = 'none';
+          return;
+        }
+      }
+      _designTooltip.style.display = 'none';
+    } else {
+      _designTooltip.style.display = 'none';
+    }
+
+    // Cell coordinate tooltip
+    if (!level) { _cellTooltip.style.display = 'none'; return; }
+    const ts  = level.tileSize;
+    const col = Math.floor((mx - offsetX) / ts);
+    const row = Math.floor((my - offsetY) / ts);
+    if (col < 0 || col >= level.cols || row < 0 || row >= level.rows) {
+      _cellTooltip.style.display = 'none';
+      return;
+    }
+    const tile = level.getTile(row, col);
+    const name = TILE_NAMES[tile] ?? String(tile);
+    _cellTooltip.textContent = `col ${col}, row ${row}  [${name}]`;
+    _cellTooltip.style.display = 'block';
+    positionTooltip(_cellTooltip, e.clientX, e.clientY);
+  });
+
+  canvas.addEventListener('mouseleave', () => {
+    _cellTooltip.style.display   = 'none';
+    _designTooltip.style.display = 'none';
+  });
+
+  function positionTooltip(el, cx, cy) {
+    const tw = el.offsetWidth, th = el.offsetHeight;
+    let left = cx + 14, top = cy - 10;
+    if (left + tw > window.innerWidth  - 8) left = cx - tw - 14;
+    if (top  + th > window.innerHeight - 8) top  = window.innerHeight - th - 8;
+    el.style.left = left + 'px';
+    el.style.top  = top  + 'px';
+  }
+
+  // Tips toggle button
+  document.getElementById('tipsBtn').addEventListener('click', () => {
+    showDesignTips = !showDesignTips;
+    const btn = document.getElementById('tipsBtn');
+    btn.textContent = showDesignTips ? '💡 HIDE DESIGN TIPS' : '💡 SHOW DESIGN TIPS';
+    btn.classList.toggle('off', !showDesignTips);
+    if (!showDesignTips) _designTooltip.style.display = 'none';
+  });
+
+  // ================================================================
+  // UPDATE / DRAW
+  // ================================================================
+  function update(dt) {
+    if (isLoading || state !== 'playing' || !player || !level) return;
+    player.update(dt, level);
+    checkSpringBoost();
+    checkSawDeath();
+    if (hardModeActive) {
+      updateWalkers(dt);
+      updateCrumbles(dt);
+    }
+
+    if (player.y > level.height + 200) {
+      state = 'dead';
+      return;
+    }
+
+    const ts = level.tileSize;
+    const r0 = Math.floor(player.y / ts);
+    const r1 = Math.floor((player.y + player.h - 1) / ts);
+    const c0 = Math.floor(player.x / ts);
+    const c1 = Math.floor((player.x + player.w - 1) / ts);
+
+    for (let r = r0; r <= r1; r++) {
+      for (let c = c0; c <= c1; c++) {
+        const tile = level.getTile(r, c);
+        if (tile === 'S') { state = 'dead'; return; }
+        if (tile === 'G') { state = 'win'; return; }
+      }
+    }
+  }
+
+  function drawGrid() {
+    if (!level) return;
+    const ts = level.tileSize;
+
+    // Grid lines
+    ctx.strokeStyle = 'rgba(0,0,0,0.07)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    for (let c = 0; c <= level.cols; c++) {
+      const x = offsetX + c * ts;
+      ctx.moveTo(x, offsetY);
+      ctx.lineTo(x, offsetY + level.height);
+    }
+    for (let r = 0; r <= level.rows; r++) {
+      const y = offsetY + r * ts;
+      ctx.moveTo(offsetX, y);
+      ctx.lineTo(offsetX + level.width, y);
+    }
+    ctx.stroke();
+
+    // Column numbers (every 5th)
+    ctx.fillStyle = '#555577';
+    ctx.font = '9px monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    for (let c = 0; c <= level.cols; c += 5) {
+      const x = offsetX + c * ts;
+      ctx.fillText(String(c), x, LABEL_TOP / 2);
+    }
+
+    // Row numbers (every 5th)
+    ctx.textAlign = 'right';
+    for (let r = 0; r <= level.rows; r += 5) {
+      const y = offsetY + r * ts;
+      ctx.fillText(String(r), LABEL_LEFT - 3, y);
+    }
+  }
+
+  function draw() {
+    const W = canvas.width, H = canvas.height;
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0, 0, W, H);
+
+    // Label margin backgrounds
+    ctx.fillStyle = '#f8f8fc';
+    ctx.fillRect(0, 0, LABEL_LEFT, H);
+    ctx.fillRect(0, 0, W, LABEL_TOP);
+
+    drawGrid();
+
+    if (!level) {
+      ctx.fillStyle = '#888';
+      ctx.font = '16px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText('Upload a grid image and press CREATE', W / 2, H / 2);
+      return;
+    }
+
+    level.draw(ctx, -offsetX, -offsetY, activeBottlenecks, activeSolutionPath);
+    if (hardModeActive) { drawWalkers(); drawCrumbles(); }
+    if (player) player.draw(ctx, -offsetX, -offsetY);
+    drawDesignSuggestions(activeDesignSuggestions);
+
+    if (state === 'dead') {
+      ctx.fillStyle = 'rgba(160,0,0,0.45)';
+      ctx.fillRect(0, 0, W, H);
+      ctx.fillStyle = '#fff';
+      ctx.textAlign = 'center';
+      ctx.font = 'bold 30px monospace';
+      ctx.fillText('YOU DIED', W / 2, H / 2 - 18);
+      ctx.font = '16px monospace';
+      ctx.fillStyle = '#ffaaaa';
+      ctx.fillText('Press R to try again', W / 2, H / 2 + 16);
+    }
+
+    if (state === 'win') {
+      ctx.fillStyle = 'rgba(0,0,0,0.5)';
+      ctx.fillRect(0, 0, W, H);
+      ctx.fillStyle = '#000';
+      ctx.font = 'bold 38px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText('LEVEL COMPLETE!', W / 2, H / 2);
+    }
+  }
+
+  // ================================================================
+  // GAME LOOP
+  // ================================================================
+  let lastTime = 0;
+  function loop(timestamp) {
+    const dt = Math.min((timestamp - lastTime) / 1000, 0.05);
+    lastTime = timestamp;
+    update(dt);
+    draw();
+    requestAnimationFrame(loop);
+  }
+
+  // ================================================================
+  // SLIDER DISPLAY
+  // ================================================================
+  const sliderMap = [
+    { id: 'sl-gravity',  valId: 'val-gravity',  decimals: 0 },
+    { id: 'sl-jump',     valId: 'val-jump',     decimals: 0 },
+    { id: 'sl-speed',    valId: 'val-speed',    decimals: 0 },
+    { id: 'sl-friction', valId: 'val-friction', decimals: 2 },
+    { id: 'sl-maxfall',  valId: 'val-maxfall',  decimals: 0 },
+  ];
+  sliderMap.forEach(({ id, valId, decimals }) => {
+    const el = document.getElementById(id);
+    el.addEventListener('input', () => {
+      document.getElementById(valId).textContent = parseFloat(el.value).toFixed(decimals);
+    });
+  });
+
+  // ================================================================
+  // UPLOAD ZONE
+  // ================================================================
+  const uploadZone = document.getElementById('upload-zone');
+  const imageInput = document.getElementById('imageInput');
+
+  uploadZone.addEventListener('click', e => {
+    if (e.target.closest('#take-photo-btn')) return;
+    imageInput.click();
+  });
+
+  uploadZone.addEventListener('dragover', e => { e.preventDefault(); uploadZone.classList.add('drag-over'); });
+  uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('drag-over'));
+  uploadZone.addEventListener('drop', e => {
+    e.preventDefault();
+    uploadZone.classList.remove('drag-over');
+    const file = e.dataTransfer.files[0];
+    if (file) setFile(file);
+  });
+
+  imageInput.addEventListener('change', function () {
+    if (this.files[0]) setFile(this.files[0]);
+    this.value = '';
+  });
+
+  let previewObjectUrl = null;
+
+  function setFile(file) {
+    pendingFile = file;
+    if (previewObjectUrl) URL.revokeObjectURL(previewObjectUrl);
+    previewObjectUrl = URL.createObjectURL(file);
+
+    const preview = document.getElementById('zone-preview');
+    const label   = document.getElementById('zone-preview-label');
+    const def     = document.getElementById('zone-default');
+
+    preview.src          = previewObjectUrl;
+    preview.style.display = 'block';
+    label.textContent    = file.name;
+    label.style.display  = 'block';
+    def.style.display    = 'none';
+  }
+
+  // ================================================================
+  // WEBCAM CAPTURE
+  // ================================================================
+  let webcamStream = null;
+  const webcamVideo = document.getElementById('webcam-view');
+  const snapBtn     = document.getElementById('snap-btn');
+  const captureCanvas = document.getElementById('capture-canvas');
+
+  document.getElementById('take-photo-btn').addEventListener('click', e => {
+    e.stopPropagation();
+    startWebcam();
+  });
+
+  snapBtn.addEventListener('click', snapPhoto);
+
+  async function startWebcam() {
+    try {
+      webcamStream = await navigator.mediaDevices.getUserMedia({
+        video: { aspectRatio: 960 / 700, width: { ideal: 1920 } },
+        audio: false,
+      });
+      webcamVideo.srcObject = webcamStream;
+      webcamVideo.classList.add('active');
+      snapBtn.classList.add('active');
+    } catch (err) {
+      alert('Could not access camera: ' + err.message);
+    }
+  }
+
+  function stopWebcam() {
+    if (webcamStream) {
+      webcamStream.getTracks().forEach(t => t.stop());
+      webcamStream = null;
+    }
+    webcamVideo.srcObject = null;
+    webcamVideo.classList.remove('active');
+    snapBtn.classList.remove('active');
+  }
+
+  function snapPhoto() {
+    const vw = webcamVideo.videoWidth;
+    const vh = webcamVideo.videoHeight;
+    if (!vw || !vh) return;
+
+    const targetRatio = 960 / 700;
+    const videoRatio  = vw / vh;
+    let sx, sy, sw, sh;
+    if (videoRatio > targetRatio) {
+      sh = vh; sw = vh * targetRatio; sx = (vw - sw) / 2; sy = 0;
+    } else {
+      sw = vw; sh = vw / targetRatio; sx = 0; sy = (vh - sh) / 2;
+    }
+
+    const capCtx = captureCanvas.getContext('2d');
+    capCtx.drawImage(webcamVideo, sx, sy, sw, sh, 0, 0, 960, 700);
+
+    captureCanvas.toBlob(async blob => {
+      if (!blob) return;
+      stopWebcam();
+
+      if (previewObjectUrl) URL.revokeObjectURL(previewObjectUrl);
+      previewObjectUrl = URL.createObjectURL(blob);
+      const preview = document.getElementById('zone-preview');
+      const label   = document.getElementById('zone-preview-label');
+      const def     = document.getElementById('zone-default');
+      preview.src           = previewObjectUrl;
+      preview.style.display = 'block';
+      label.textContent     = 'Webcam snapshot';
+      label.style.display   = 'block';
+      def.style.display     = 'none';
+
+      syncPhysics();
+      setLoading(true);
+      const form = new FormData();
+      form.append('image', blob, 'webcam-snap.jpg');
+      try {
+        const res  = await fetch('/upload', { method: 'POST', body: form });
+        const json = await res.json();
+        if (!res.ok) throw new Error(json.error || 'Upload failed');
+        loadGeneratedLevel(json.data);
+        pendingFile = null;
+      } catch (err) {
+        alert('✗ ' + err.message);
+        console.error(err);
+      } finally {
+        setLoading(false);
+      }
+    }, 'image/jpeg', 0.92);
+  }
+
+  // ================================================================
+  // CREATE BUTTON
+  // ================================================================
+  function syncPhysics() {
+    GRAVITY       = parseFloat(document.getElementById('sl-gravity').value);
+    JUMP_STRENGTH = parseFloat(document.getElementById('sl-jump').value);
+    MOVE_SPEED    = parseFloat(document.getElementById('sl-speed').value);
+    FRICTION      = parseFloat(document.getElementById('sl-friction').value);
+    MAX_FALL      = parseFloat(document.getElementById('sl-maxfall').value);
+  }
+
+  document.getElementById('createBtn').addEventListener('click', async () => {
+    syncPhysics();
+
+    if (!pendingFile) {
+      if (level) { spawnPlayer(); resetSidebar(); }
+      return;
+    }
+
+    setLoading(true);
+    const form = new FormData();
+    form.append('image', pendingFile);
+
+    try {
+      const res  = await fetch('/upload', { method: 'POST', body: form });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || 'Upload failed');
+      loadGeneratedLevel(json.data);
+      pendingFile = null;
+    } catch (err) {
+      alert('✗ ' + err.message);
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  });
+
+  // ================================================================
+  // TERM REPLACEMENT
+  // ================================================================
+  const TERM_MAP = [
+    [/\bAABB\s*[Cc]ollision\b/g,      'Touch Detection'],
+    [/\bAABB\b/g,                      'box check'],
+    [/\bkinematic\s*arc\b/gi,          'Jump Path'],
+    [/\bkinematic\b/gi,                'movement'],
+    [/\bBFS\b/g,                       'path search'],
+    [/\bDFS\b/g,                       'path search'],
+    [/\breachability\s*graph\b/gi,     'map of where you can go'],
+    [/\breachability\b/gi,             'where you can go'],
+    [/\bvelocity\b/gi,                 'speed'],
+    [/\bgravity\b/gi,                  'pull-down force'],
+    [/\bcollision\b/gi,                'bump'],
+    [/\bsurface\s*tile\b/gi,           'floor tile'],
+    [/\bspawn\b/gi,                    'start spot'],
+    [/\bunsolvable\b/gi,               'impossible'],
+    [/\bsolvable\b/gi,                 'beatable'],
+    [/\bphysics\b/gi,                  'game rules'],
+    [/\btrajectory\b/gi,               'path through the air'],
+    [/\bparabolic\b/gi,                'curvy jump'],
+    [/\bvector\b/gi,                   'direction'],
+    [/\bparabola\b/gi,                 'jump curve'],
+    [/\btile_size\b/gi,                'block size'],
+    [/\bdelta\b/gi,                    'gap'],
+    [/\bmax_rise\b/gi,                 'max jump height'],
+    [/\bmax_range\b/gi,                'max jump distance'],
+    [/\bt_peak\b/gi,                   'jump top time'],
+    [/\bt_land\b/gi,                   'landing time'],
+  ];
+
+  function replaceTechTerms(text) {
+    return TERM_MAP.reduce((t, [pat, rep]) => t.replace(pat, rep), text);
+  }
+
+  // ================================================================
+  // VERIFICATION ENGINE UI
+  // ================================================================
+  function resetSidebar() {
+    document.getElementById('verdict').style.display             = 'none';
+    document.getElementById('bottlenecks-section').style.display = 'none';
+    document.getElementById('challenge-alert').classList.remove('visible');
+    document.getElementById('warnings-idle').style.display       = '';
+    document.getElementById('thinking-indicator').style.display  = 'none';
+    document.getElementById('robot-thinking').classList.remove('active');
+    document.getElementById('trace-think').textContent  = '';
+    document.getElementById('trace-answer').textContent = '';
+    document.getElementById('trace-cursor').style.display = 'none';
+    document.getElementById('idle-hint').style.display   = '';
+    activeBottlenecks       = [];
+    activeSolutionPath      = [];
+    activeDesignSuggestions = [];
+    activeSuggestedSpawn    = null;
+    activeSuggestedGoal     = null;
+    showDesignTips          = false;
+    _designTooltip.style.display  = 'none';
+    _traceThink  = '';
+    _traceAnswer = '';
+  }
+
+  let _traceThink      = '';
+  let _traceAnswer     = '';
+  let _traceRafPending = false;
+  const THINK_MAX      = 2000;
+
+  function appendToTrace(text, type) {
+    const cleaned = replaceTechTerms(text);
+    if (type === 'thinking-chunk') {
+      _traceThink += cleaned;
+      if (_traceThink.length > THINK_MAX)
+        _traceThink = '… ' + _traceThink.slice(-THINK_MAX + 2);
+    } else {
+      _traceAnswer += cleaned;
+    }
+    if (!_traceRafPending) {
+      _traceRafPending = true;
+      requestAnimationFrame(_flushTrace);
+    }
+  }
+
+  function _flushTrace() {
+    _traceRafPending = false;
+    const thinkEl  = document.getElementById('trace-think');
+    const answerEl = document.getElementById('trace-answer');
+    const cursor   = document.getElementById('trace-cursor');
+    const idleHint = document.getElementById('idle-hint');
+    if (idleHint) idleHint.style.display = 'none';
+    thinkEl.textContent  = _traceThink;
+    answerEl.textContent = _traceAnswer;
+    cursor.style.display = _traceAnswer ? 'none' : 'inline-block';
+    document.getElementById('reasoning-trace').scrollTop =
+      document.getElementById('reasoning-trace').scrollHeight;
+  }
+
+  function showVerdict(result) {
+    const warningsIdle   = document.getElementById('warnings-idle');
+    const challengeAlert = document.getElementById('challenge-alert');
+    const verdict        = document.getElementById('verdict');
+    const bnSection      = document.getElementById('bottlenecks-section');
+    const bnList         = document.getElementById('bottleneck-list');
+
+    warningsIdle.style.display = 'none';
+    document.getElementById('robot-thinking').classList.remove('active');
+    document.getElementById('trace-cursor').style.display = 'none';
+
+    if (!result.solvable) {
+      document.getElementById('kid-summary').textContent = result.kid_summary || 'This level is too hard to beat with these settings!';
+      challengeAlert.classList.add('visible');
+    } else {
+      challengeAlert.classList.remove('visible');
+    }
+
+    verdict.className = result.solvable ? 'solvable' : 'unsolvable';
+    document.getElementById('verdict-icon').textContent  = result.solvable ? '🎉' : '😅';
+    document.getElementById('verdict-label').textContent = result.solvable ? 'You can beat it!' : 'Too hard right now!';
+    document.getElementById('verdict-proof').textContent = result.solvable
+      ? (result.kid_summary || result.proof || '')
+      : (result.proof || '');
+    verdict.style.display = 'block';
+
+    bnList.innerHTML = '';
+    if (result.bottlenecks && result.bottlenecks.length > 0) {
+      bnSection.style.display = 'block';
+      activeBottlenecks = result.bottlenecks;
+      for (const b of result.bottlenecks) {
+        const li = document.createElement('li');
+        li.innerHTML = `<span class="coord">(${b.x}, ${b.y})</span>${b.reason}`;
+        bnList.appendChild(li);
+      }
+    } else {
+      bnSection.style.display = 'none';
+      activeBottlenecks = [];
+    }
+
+    activeSolutionPath = (result.solvable && Array.isArray(result.solutionPath))
+      ? result.solutionPath : [];
+
+    activeDesignSuggestions = Array.isArray(result.design_suggestions) ? result.design_suggestions : [];
+    activeSuggestedSpawn    = result.suggestedSpawn || null;
+    activeSuggestedGoal     = result.suggestedGoal  || null;
+
+    const tipsBtn = document.getElementById('tipsBtn');
+    tipsBtn.disabled = false;
+    if (!showDesignTips) {
+      showDesignTips = true;
+      tipsBtn.textContent = '💡 HIDE DESIGN TIPS';
+      tipsBtn.classList.remove('off');
+    }
+  }
+
+  async function runEvaluation() {
+    if (!currentGrid) return;
+
+    const btn       = document.getElementById('evaluateBtn');
+    const updateBtn = document.getElementById('updatePhysicsBtn');
+    const indicator = document.getElementById('thinking-indicator');
+
+    btn.disabled       = true;
+    updateBtn.disabled = true;
+    indicator.style.display = 'inline-block';
+    document.getElementById('verdict').style.display = 'none';
+    document.getElementById('bottlenecks-section').style.display = 'none';
+    document.getElementById('challenge-alert').classList.remove('visible');
+    document.getElementById('warnings-idle').style.display = 'none';
+    document.getElementById('trace-think').textContent  = '';
+    document.getElementById('trace-answer').textContent = '';
+    document.getElementById('trace-cursor').style.display = 'inline-block';
+    document.getElementById('idle-hint').style.display = 'none';
+    document.getElementById('robot-thinking').classList.add('active');
+    activeBottlenecks  = [];
+    activeSolutionPath = [];
+    _traceThink  = '';
+    _traceAnswer = '';
+
+    try {
+      const response = await fetch('/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          grid: currentGrid,
+          physicsParams: {
+            gravity:      parseFloat(document.getElementById('sl-gravity').value),
+            jumpStrength: parseFloat(document.getElementById('sl-jump').value),
+            moveSpeed:    parseFloat(document.getElementById('sl-speed').value),
+            tileSize:     TILE_SIZE,
+          },
+        }),
+      });
+
+      if (!response.ok) {
+        const text = await response.text();
+        let msg = `HTTP ${response.status}`;
+        try { msg = JSON.parse(text).error || msg; } catch { msg = text.slice(0, 200) || msg; }
+        throw new Error(msg);
+      }
+
+      const reader  = response.body.getReader();
+      const decoder = new TextDecoder();
+      let   buf     = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        const parts = buf.split('\n\n');
+        buf = parts.pop();
+        for (const part of parts) {
+          const eventMatch = part.match(/^event: (\w+)/m);
+          const dataMatch  = part.match(/^data: (.+)$/m);
+          if (!eventMatch || !dataMatch) continue;
+          const event = eventMatch[1];
+          let data;
+          try { data = JSON.parse(dataMatch[1]); } catch { continue; }
+          if      (event === 'thinking') appendToTrace(data.text, 'thinking-chunk');
+          else if (event === 'answer')   appendToTrace(data.text, 'answer-chunk');
+          else if (event === 'result')   showVerdict(data);
+          else if (event === 'error')    appendToTrace(`\n[ERROR] ${data.message}`, 'answer-chunk');
+        }
+      }
+    } catch (err) {
+      appendToTrace(`\n[ERROR] ${err.message}`, 'answer-chunk');
+    } finally {
+      btn.disabled       = false;
+      updateBtn.disabled = false;
+      indicator.style.display = 'none';
+      document.getElementById('robot-thinking').classList.remove('active');
+      document.getElementById('trace-cursor').style.display = 'none';
+    }
+  }
+
+  document.getElementById('evaluateBtn').addEventListener('click', runEvaluation);
+
+  document.getElementById('hardModeBtn').addEventListener('click', async () => {
+    if (!currentGrid) return;
+    if (hardModeActive) {
+      // revert to base grid
+      loadGeneratedLevel(baseGrid, false);
+      return;
+    }
+    baseGrid = currentGrid.map(r => r.slice());
+    const btn = document.getElementById('hardModeBtn');
+    btn.disabled = true;
+    btn.textContent = '💀 GENERATING…';
+    try {
+      const res  = await fetch('/api/levels/hard-mode', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ grid: currentGrid, width: currentGrid[0].length, height: currentGrid.length }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || 'Hard mode failed');
+      loadGeneratedLevel(json.level.data, true);
+    } catch (err) {
+      alert('✗ ' + err.message);
+      btn.disabled = false;
+      btn.textContent = '💀 HARD MODE';
+    }
+  });
+
+  document.getElementById('updatePhysicsBtn').addEventListener('click', () => {
+    syncPhysics();
+    if (level) spawnPlayer();
+    runEvaluation();
+  });
+
+  // ================================================================
+  // BOOT
+  // ================================================================
+  Input.init();
+  requestAnimationFrame(loop);
+
+  fetch('level_output.json')
+    .then(r => r.json())
+    .then(json => { if (json.data) loadGeneratedLevel(json.data); })
+    .catch(() => {});
+</script>
+</body>
+</html>

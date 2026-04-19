@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git checkout *)",
+      "Bash(pkill -f \"node server.js\")",
+      "Bash(pkill -f \"vite\")",
+      "Bash(node server.js)",
+      "Bash(echo \"backend pid: $!\")",
+      "Bash(npm run *)",
+      "Bash(echo \"frontend pid: $!\")"
+    ]
+  }
+}
